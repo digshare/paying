@@ -1,0 +1,7 @@
+{
+  "name": "enverse-pay",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "enverse",
+  "license": "MIT"
+}
