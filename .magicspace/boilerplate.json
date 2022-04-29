@@ -1,15 +1,53 @@
 {
   "extends": "@mufan/code-boilerplates/typescript",
   "options": {
-    "name": "awesome-library",
+    "name": "enverse-pay",
     "license": "MIT",
-    "author": "Awesome Author",
-    "tsProjects": [
+    "author": "enverse",
+    "packages": [
       {
-        "name": "library"
+        "name": "@enverse-pay/core",
+        "tsProjects": [
+          {
+            "name": "library"
+          },
+          {
+            "name": "test"
+          }
+        ]
       },
       {
-        "name": "test"
+        "name": "@enverse-pay/alipay",
+        "tsProjects": [
+          {
+            "name": "program"
+          },
+          {
+            "name": "test"
+          }
+        ]
+      },
+      {
+        "name": "@enverse-pay/wechat",
+        "tsProjects": [
+          {
+            "name": "program"
+          },
+          {
+            "name": "test"
+          }
+        ]
+      },
+      {
+        "name": "@enverse-pay/apple",
+        "tsProjects": [
+          {
+            "name": "program"
+          },
+          {
+            "name": "test"
+          }
+        ]
       }
     ]
   }
