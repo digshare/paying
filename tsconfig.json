@@ -7,19 +7,19 @@
       "path": "packages/core/src/test"
     },
     {
-      "path": "packages/alipay/src/program"
+      "path": "packages/alipay/src/library"
     },
     {
       "path": "packages/alipay/src/test"
     },
     {
-      "path": "packages/wechat/src/program"
+      "path": "packages/wechat/src/library"
     },
     {
       "path": "packages/wechat/src/test"
     },
     {
-      "path": "packages/apple/src/program"
+      "path": "packages/apple/src/library"
     },
     {
       "path": "packages/apple/src/test"
