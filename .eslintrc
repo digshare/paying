@@ -1,0 +1,18 @@
+{
+  "root": true,
+  "ignorePatterns": [
+    "/packages/core/src/",
+    "/packages/core/bld/",
+    "/packages/alipay/src/",
+    "/packages/alipay/bld/",
+    "/packages/wechat/src/",
+    "/packages/wechat/bld/",
+    "/packages/apple/src/",
+    "/packages/apple/bld/"
+  ],
+  "extends": ["eslint:recommended"],
+  "env": {
+    "node": true,
+    "es2020": true
+  }
+}

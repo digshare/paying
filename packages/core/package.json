@@ -1,0 +1,13 @@
+{
+  "name": "@enverse-pay/core",
+  "version": "0.0.0",
+  "license": "MIT",
+  "author": "enverse",
+  "types": "bld/library/index.d.ts",
+  "exports": {
+    "require": "./bld/library/index.js"
+  },
+  "dependencies": {
+    "tslib": "^2.4.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@enverse-pay/wechat",
+  "version": "0.0.0",
+  "license": "MIT",
+  "author": "enverse",
+  "dependencies": {
+    "tslib": "^2.4.0"
+  }
+}
