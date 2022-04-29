@@ -15,11 +15,11 @@
     ".",
     "packages/core/src/library",
     "packages/core/src/test",
-    "packages/alipay/src/program",
+    "packages/alipay/src/library",
     "packages/alipay/src/test",
-    "packages/wechat/src/program",
+    "packages/wechat/src/library",
     "packages/wechat/src/test",
-    "packages/apple/src/program",
+    "packages/apple/src/library",
     "packages/apple/src/test"
   ],
   "eslint.validate": [

@@ -20,7 +20,7 @@
         "name": "@enverse-pay/alipay",
         "tsProjects": [
           {
-            "name": "program"
+            "name": "library"
           },
           {
             "name": "test"
@@ -31,7 +31,7 @@
         "name": "@enverse-pay/wechat",
         "tsProjects": [
           {
-            "name": "program"
+            "name": "library"
           },
           {
             "name": "test"
@@ -42,7 +42,7 @@
         "name": "@enverse-pay/apple",
         "tsProjects": [
           {
-            "name": "program"
+            "name": "library"
           },
           {
             "name": "test"
