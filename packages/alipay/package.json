@@ -8,6 +8,7 @@
     "require": "./bld/library/index.js"
   },
   "dependencies": {
+    "@enverse-pay/core": "*",
     "tslib": "^2.4.0"
   }
 }
