@@ -20,7 +20,13 @@
         "name": "@enverse-pay/alipay",
         "tsProjects": [
           {
-            "name": "library"
+            "name": "library",
+            "references": [
+              {
+                "package": "@enverse-pay/core",
+                "project": "library"
+              }
+            ]
           },
           {
             "name": "test"
@@ -31,7 +37,13 @@
         "name": "@enverse-pay/wechat",
         "tsProjects": [
           {
-            "name": "library"
+            "name": "library",
+            "references": [
+              {
+                "package": "@enverse-pay/core",
+                "project": "library"
+              }
+            ]
           },
           {
             "name": "test"
