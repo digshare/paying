@@ -1,3 +1,5 @@
+import type {Repository} from '../@repository';
+
 import type {
   OriginalTransactionDocument,
   OriginalTransactionId,
@@ -34,10 +36,53 @@ export class SubscriptionTransaction extends Transaction {
 }
 
 export class Subscription {
+  get status(): 'pending' | 'expired' | 'canceled' | 'active' | 'not-started' {
+    if (this.originalTransaction.canceledAt) {
+      return 'canceled';
+    }
+
+    if (
+      !this.originalTransaction.expiresAt ||
+      !this.originalTransaction.startsAt
+    ) {
+      return 'pending';
+    }
+
+    if (this.originalTransaction.expiresAt < Date.now()) {
+      return 'expired';
+    }
+
+    if (this.originalTransaction.startsAt > Date.now()) {
+      return 'not-started';
+    }
+
+    return 'active';
+  }
+
   constructor(
-    private originalTransaction: OriginalTransactionDocument,
-    private transactions: SubscriptionTransactionDocument[],
+    public originalTransaction: OriginalTransactionDocument,
+    public transactions: SubscriptionTransactionDocument[],
+    private repository: Repository,
   ) {}
+
+  async refresh(): Promise<this> {
+    let originalTransaction = await this.repository.getOriginalTransactionById(
+      this.originalTransaction._id,
+    );
+    let transactions =
+      await this.repository.getSubscriptionTransactionsByOriginalTransactionId(
+        this.originalTransaction._id,
+      );
+
+    if (!originalTransaction) {
+      throw new Error('Transaction has been removed');
+    }
+
+    this.originalTransaction = originalTransaction;
+    this.transactions = transactions;
+
+    return this;
+  }
 }
 
 export interface IStoreAdapter<TProduct extends IProduct = IProduct> {
@@ -45,11 +90,14 @@ export interface IStoreAdapter<TProduct extends IProduct = IProduct> {
   config: unknown;
   generateTransactionId(): TransactionId;
   generateOriginalTransactionId(): OriginalTransactionId;
+  getDuration(product: TProduct): Timestamp;
 
   createPurchase(creation: SubscriptionCreation): Promise<void>;
+
   createSubscription(
     creation: SubscriptionCreation<TProduct>,
   ): Promise<unknown>;
+  cancelSubscription(subscription: Subscription): Promise<boolean>;
 
   validatePurchase(receipt: unknown): Promise<OrderPaid>;
 

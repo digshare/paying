@@ -6,103 +6,59 @@ import type {
   IProduct,
   IStoreAdapter,
   OriginalTransactionDocument,
+  Subscription,
   SubscriptionCreation,
   SubscriptionTransactionDocument,
   Timestamp,
   UserId,
 } from './definitions';
-import {Subscription} from './definitions';
 
-interface SubscriptionCreateOptions<TProduct extends IProduct> {
-  startsAt: Timestamp;
-  expiresAt: Timestamp;
-  product: TProduct;
+interface CreateOrUpdateSubscriptionOptions<
+  TStoreAdapter extends IStoreAdapter,
+> {
+  product: InferProduct<TStoreAdapter>;
   userId: UserId;
 }
+
+interface StoreConfig {
+  repository: RepositoryConfig;
+  purchaseExpiresAfter: number;
+}
+
+type InferProduct<TStoreAdapter extends IStoreAdapter> = Parameters<
+  TStoreAdapter['createSubscription']
+>[0]['product'];
 
 export class Store<TStoreAdapter extends IStoreAdapter> {
   private repository: Repository;
 
-  constructor(
-    private adapter: TStoreAdapter,
-    repositoryConfig: RepositoryConfig,
-  ) {
-    this.repository = new Repository(repositoryConfig);
+  constructor(private adapter: TStoreAdapter, public config: StoreConfig) {
+    this.repository = new Repository(config.repository);
   }
 
-  async createSubscription(
-    createOptions: SubscriptionCreateOptions<
-      Parameters<TStoreAdapter['createSubscription']>[0]['product']
-    >,
-  ): Promise<{
-    subscription: Subscription;
-    addition: Awaited<ReturnType<TStoreAdapter['createSubscription']>>;
-  }> {
-    let now = new Date().getTime() as Timestamp;
-    let {startsAt, expiresAt, product, userId} = createOptions;
+  async createOrUpdateSubscription(
+    options: CreateOrUpdateSubscriptionOptions<TStoreAdapter>,
+  ): Promise<void> {
+    let {product, userId} = options;
 
-    let originalTransactionId = this.adapter.generateOriginalTransactionId();
-    let transactionId = this.adapter.generateTransactionId();
+    let activeSubscription: Subscription | undefined;
 
-    let subscriptionCreation: SubscriptionCreation = {
-      originalTransactionId,
-      transactionId,
-      startsAt,
-      expiresAt,
-      signedAt: undefined,
-      renewalEnabled: false,
-      paymentExpiresAt: (now + ms('10 min')) as Timestamp,
-      product,
-      userId,
-      canceledAt: undefined,
-    };
+    if (product.group) {
+      activeSubscription =
+        await this.repository.getActiveSubscriptionTransactionsByUserIdInGroup(
+          userId,
+          product.group,
+        );
+    }
 
-    let result = await this.adapter.createSubscription(subscriptionCreation);
+    if (activeSubscription) {
+      await this.cancelSubscription(activeSubscription);
+    }
 
-    let originalTransactionDoc: OriginalTransactionDocument = {
-      _id: originalTransactionId,
-      // TODO: thirdPartyId for alipay
-      product: product.id,
-      productGroup: product.group,
-      startsAt,
-      expiresAt,
-      signedAt: undefined,
-      canceledAt: undefined,
-      cancelReason: undefined,
-      renewalEnabled: false,
-      lastFailedReason: undefined,
-      user: userId,
-      type: this.adapter.type,
-      raw: undefined,
-    };
-
-    let transactionDoc: SubscriptionTransactionDocument = {
-      _id: transactionId,
-      originalTransactionId,
-      startsAt,
-      expiresAt,
-      product: product.id,
-      productGroup: product.group,
-      user: userId,
-      purchasedAt: undefined,
-      completedAt: undefined,
-      canceledAt: undefined,
-      cancelReason: undefined,
-      paymentExpiresAt: undefined,
-      failedAt: undefined,
-      type: this.adapter.type,
-      raw: undefined,
-    };
-
-    await this.repository.createOriginalTransaction(originalTransactionDoc);
-    await this.repository.createTransaction(transactionDoc);
-
-    let subscription = new Subscription(originalTransactionDoc, [
-      transactionDoc,
-    ]);
-
-    return {subscription, addition: result as any};
+    await this.createSubscription(options);
   }
+
+  async handleNotification(): Promise<void> {}
 
   async handleSignedCallback(data: unknown): Promise<void> {
     let signed = await this.adapter.parseSigned(data);
@@ -144,9 +100,9 @@ export class Store<TStoreAdapter extends IStoreAdapter> {
       );
     }
 
-    if (!transactionDoc.expiresAt) {
-      throw new Error(`expiresAt should be set on transition creating.`);
-    }
+    let startsAt = transactionDoc.startsAt;
+    // TODO: 续费
+    let expiresAt = (transactionDoc.duration + startsAt) as Timestamp;
 
     await this.repository.collectionOfType('transaction').updateOne(
       {
@@ -170,9 +126,110 @@ export class Store<TStoreAdapter extends IStoreAdapter> {
       },
       {
         $set: {
-          expiresAt: transactionDoc.expiresAt,
+          expiresAt,
         },
       },
     );
+  }
+
+  async cancelSubscription(subscription: Subscription): Promise<void> {
+    let canceled = await this.adapter.cancelSubscription(subscription);
+
+    if (canceled) {
+      await this.repository.collectionOfType('original-transaction').updateOne(
+        {
+          _id: subscription.originalTransaction._id,
+        },
+        {
+          $set: {
+            canceledAt: new Date().getTime() as Timestamp,
+          },
+        },
+      );
+    }
+
+    await subscription.refresh();
+
+    if (subscription.status !== 'canceled') {
+      throw new Error('Subscription should be canceled before re-creating.');
+    }
+  }
+
+  private async createSubscription({
+    product,
+    userId,
+  }: CreateOrUpdateSubscriptionOptions<TStoreAdapter>): Promise<{
+    subscription: Subscription;
+    payload: Awaited<ReturnType<TStoreAdapter['createSubscription']>>;
+  }> {
+    let now = new Date().getTime() as Timestamp;
+
+    let originalTransactionId = this.adapter.generateOriginalTransactionId();
+    let transactionId = this.adapter.generateTransactionId();
+    let duration = this.adapter.getDuration(product);
+
+    let startsAt = now;
+    let expiresAt = (now + duration) as Timestamp;
+
+    let subscriptionCreation: SubscriptionCreation = {
+      originalTransactionId,
+      transactionId,
+      startsAt,
+      expiresAt,
+      signedAt: undefined,
+      renewalEnabled: false,
+      paymentExpiresAt: (now + this.config.purchaseExpiresAfter) as Timestamp,
+      product,
+      userId,
+      canceledAt: undefined,
+    };
+
+    let result = await this.adapter.createSubscription(subscriptionCreation);
+
+    let originalTransactionDoc: OriginalTransactionDocument = {
+      _id: originalTransactionId,
+      // TODO: thirdPartyId for alipay
+      product: product.id,
+      productGroup: product.group,
+      startsAt: undefined,
+      createdAt: now,
+      expiresAt: undefined,
+      signedAt: undefined,
+      canceledAt: undefined,
+      cancelReason: undefined,
+      renewalEnabled: false,
+      lastFailedReason: undefined,
+      user: userId,
+      type: this.adapter.type,
+      raw: undefined,
+    };
+
+    let transactionDoc: SubscriptionTransactionDocument = {
+      _id: transactionId,
+      originalTransactionId,
+      startsAt,
+      duration,
+      product: product.id,
+      productGroup: product.group,
+      user: userId,
+      createdAt: now,
+      purchasedAt: undefined,
+      completedAt: undefined,
+      canceledAt: undefined,
+      cancelReason: undefined,
+      paymentExpiresAt: undefined,
+      failedAt: undefined,
+      type: this.adapter.type,
+      raw: undefined,
+    };
+
+    await this.repository.createOriginalTransaction(originalTransactionDoc);
+    await this.repository.createTransaction(transactionDoc);
+
+    let subscription = (await this.repository.getSubscriptionById(
+      originalTransactionId,
+    ))!;
+
+    return {subscription, payload: result as any};
   }
 }

@@ -15,6 +15,7 @@ export interface TransactionDocument {
   productGroup: string | undefined;
   user: UserId;
 
+  createdAt: Timestamp;
   purchasedAt: Timestamp | undefined;
   completedAt: Timestamp | undefined;
   canceledAt: Timestamp | undefined;
@@ -30,5 +31,5 @@ export interface TransactionDocument {
 export interface SubscriptionTransactionDocument extends TransactionDocument {
   originalTransactionId: OriginalTransactionId;
   startsAt: Timestamp;
-  expiresAt: Timestamp | undefined;
+  duration: number;
 }
