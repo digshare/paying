@@ -8,6 +8,7 @@
     "require": "./bld/library/index.js"
   },
   "dependencies": {
+    "mongodb": "^4.5.0",
     "tslib": "^2.4.0"
   }
 }
