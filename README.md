@@ -8,6 +8,70 @@ MIT License.
 
 ## 使用
 
+```ts
+const paying = new Paying({
+  services: {
+    alipay: new AlipayService(),
+    'apple-iap': new AppleIAPService(),
+  },
+});
+```
+
+```ts
+const user = paying.user(userId);
+
+const subscription = await user.findSubscription('premium');
+
+const subscriptions = await user.getSubscriptions();
+```
+
+苹果订阅
+
+```ts
+const user = paying.user(userId);
+
+const subscription = await user.prepareSubscription({
+  name: 'premium',
+  service: 'apple-iap',
+  extension(date) {
+    return addMonths(date, 1);
+  },
+});
+
+await subscription.submit(receipt);
+```
+
+支付宝订阅
+
+```ts
+const user = paying.user(userId);
+
+const subscription = await user.prepareSubscription({
+  name: 'premium',
+  service: 'alipay',
+  extension(date) {
+    return addMonths(date, 1);
+  },
+});
+
+// 创建订单，用户支付，回调
+
+await subscription.submit(data);
+```
+
+支付宝付款
+
+```ts
+const user = paying.user(userId);
+
+const payment = await user.preparePayment({
+  product: '<product-id>',
+  amount: '15.00',
+});
+
+await payment.submit(data);
+```
+
 ```typescript
 // 创建 store
 let alipayStore = new Store(
