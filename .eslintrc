@@ -3,6 +3,7 @@
   "ignorePatterns": [
     "/packages/core/src/",
     "/packages/core/bld/",
+    "/packages/core/.bld-cache/",
     "/packages/alipay/src/",
     "/packages/alipay/bld/",
     "/packages/wechat/src/",
