@@ -12,7 +12,9 @@
             "name": "library"
           },
           {
-            "name": "test"
+            "name": "test",
+            "noEmit": true,
+            "references": ["library"]
           }
         ]
       },
