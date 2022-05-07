@@ -167,14 +167,18 @@ export class PreparingSubscription {
 
 export interface PreparingSubscriptionOptions {}
 
-function getExpiration(transactions: any[]): number {
+function getExpiration(transactions: any[], now = Date.now()): number {
   let startsAt = 0;
   let expiresAt = 0;
 
   transactions.sort((x, y) => x.startsAt - y.startsAt);
 
   for (let transaction of transactions) {
-    if (transaction.startsAt < expiresAt) {
+    if (startsAt > Math.max(now, expiresAt)) {
+      break;
+    }
+
+    if (transaction.startsAt <= expiresAt) {
       expiresAt += transaction.expiresAt - transaction.startsAt;
     } else {
       startsAt = transaction.startsAt;
