@@ -22,6 +22,9 @@ const user = paying.user(userId);
 
 const subscription = await user.findSubscription('premium');
 
+// subscription.active;
+// subscription.expiresAt;
+
 const subscriptions = await user.getSubscriptions();
 ```
 
@@ -30,15 +33,31 @@ const subscriptions = await user.getSubscriptions();
 ```ts
 const user = paying.user(userId);
 
-const subscription = await user.prepareSubscription({
-  name: 'premium',
-  service: 'apple-iap',
-  extension(date) {
-    return addMonths(date, 1);
-  },
-});
+// const result = await appleIAPService.resolveReceipt(receipt);
 
-await subscription.submit(receipt);
+await user.submitReceipt('apple-iap', receipt);
+
+// if (result.type === 'subscription') {
+//   // const subscription = await user.prepareSubscription({
+//   // });
+
+//   // await subscription.submit();
+
+//   // await user.submitSubscription({
+//   //   name: 'premium',
+//   //   service: 'apple-iap',
+//   //   extend(origin) {
+//   //     return addMonths(origin, 1);
+//   //   },
+//   // });
+// } else if (result.type === 'payment') {
+//   // const payment = await user.preparePayment({
+//   //   product: result.product,
+//   //   amount: result.amount,
+//   // });
+
+//   // await payment.submit();
+// }
 ```
 
 支付宝订阅
@@ -49,8 +68,8 @@ const user = paying.user(userId);
 const subscription = await user.prepareSubscription({
   name: 'premium',
   service: 'alipay',
-  extension(date) {
-    return addMonths(date, 1);
+  extend(origin) {
+    return addMonths(origin, 1);
   },
 });
 
