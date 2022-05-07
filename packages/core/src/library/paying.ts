@@ -174,13 +174,13 @@ function getExpiration(transactions: any[], now = Date.now()): number {
   transactions.sort((x, y) => x.startsAt - y.startsAt);
 
   for (let transaction of transactions) {
-    if (startsAt > Math.max(now, expiresAt)) {
-      break;
-    }
-
     if (transaction.startsAt <= expiresAt) {
       expiresAt += transaction.expiresAt - transaction.startsAt;
     } else {
+      if (transaction.startsAt > now) {
+        break;
+      }
+
       startsAt = transaction.startsAt;
       expiresAt = transaction.expiresAt;
     }
