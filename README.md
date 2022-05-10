@@ -1,4 +1,4 @@
-# enverse-pay
+# paying
 
 Just another awesome magic.
 
