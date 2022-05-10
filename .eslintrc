@@ -6,10 +6,13 @@
     "/packages/core/.bld-cache/",
     "/packages/alipay/src/",
     "/packages/alipay/bld/",
+    "/packages/alipay/.bld-cache/",
     "/packages/wechat/src/",
     "/packages/wechat/bld/",
+    "/packages/wechat/.bld-cache/",
     "/packages/apple/src/",
-    "/packages/apple/bld/"
+    "/packages/apple/bld/",
+    "/packages/apple/.bld-cache/"
   ],
   "extends": ["eslint:recommended"],
   "env": {
