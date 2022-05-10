@@ -5,7 +5,7 @@ import AlipaySdk from 'alipay-sdk';
 import {sign} from 'alipay-sdk/lib/util';
 
 export class Alipay {
-  private sdk: AlipaySdk;
+  sdk: AlipaySdk;
 
   constructor(sdkConfig: AlipaySdkConfig) {
     this.sdk = new AlipaySdk(sdkConfig);

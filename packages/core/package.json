@@ -3,9 +3,11 @@
   "version": "0.0.0",
   "license": "MIT",
   "author": "enverse",
-  "types": "bld/library/index.d.ts",
   "exports": {
-    "require": "./bld/library/index.js"
+    ".": {
+      "require": "./bld/library/index.js",
+      "types": "./bld/library/index.d.ts"
+    }
   },
   "dependencies": {
     "mongodb": "^4.5.0",

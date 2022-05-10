@@ -8,7 +8,9 @@ export type ProductId = Nominal<string, 'product-id'>;
 
 export type UserId = Nominal<string, 'user-id'>;
 
-export interface TransactionDocument {
+export type TransactionType = 'purchase' | 'subscription';
+
+interface ITransactionDocument<TType extends TransactionType> {
   _id: TransactionId;
   // 注意 productId 可能为字符串常量，当来自控制台送会员的时候
   product: ProductId;
@@ -24,12 +26,44 @@ export interface TransactionDocument {
   failedAt: Timestamp | undefined;
 
   lastFailedReason?: unknown;
-  type: string;
+  service: string;
+  type: TType;
   raw: any;
 }
 
-export interface SubscriptionTransactionDocument extends TransactionDocument {
+export interface PurchaseTransactionDocument
+  extends ITransactionDocument<'purchase'> {}
+
+export interface SubscriptionTransactionDocument
+  extends ITransactionDocument<'subscription'> {
+  type: 'subscription';
   originalTransactionId: OriginalTransactionId;
   startsAt: Timestamp;
   duration: number;
+}
+
+export type TransactionDocument =
+  | PurchaseTransactionDocument
+  | SubscriptionTransactionDocument;
+
+class Transaction {
+  get status(): 'pending' | 'completed' | 'canceled' | 'failed' {
+    if (this.transactionData.canceledAt) {
+      return 'canceled';
+    } else if (this.transactionData.completedAt) {
+      return 'completed';
+    } else if (this.transactionData.failedAt) {
+      return 'failed';
+    } else {
+      return 'pending';
+    }
+  }
+
+  constructor(private transactionData: TransactionDocument) {}
+}
+
+export class SubscriptionTransaction extends Transaction {
+  constructor(transactionData: SubscriptionTransactionDocument) {
+    super(transactionData);
+  }
 }

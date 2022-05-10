@@ -1,15 +1,20 @@
 import type {
+  Action,
+  ApplyingReceipt,
+  CancelSubscriptionOptions,
   IProduct,
-  IStoreAdapter,
-  OrderPaid,
   OriginalTransactionId,
-  SignedData,
-  SubscriptionCreation,
+  PayingServiceSubscriptionPrepareOptions,
+  PaymentAction,
+  PurchaseCreation,
+  SubscribedAction,
   Timestamp,
   TransactionId,
 } from '@enverse-pay/core';
-import type {AlipaySdkConfig} from 'alipay-sdk';
+import {IPayingService} from '@enverse-pay/core';
+import type {AlipaySdkCommonResult, AlipaySdkConfig} from 'alipay-sdk';
 import {format} from 'date-fns';
+import ms from 'ms';
 import {v4 as uuid} from 'uuid';
 
 import {Alipay} from './alipay';
@@ -29,57 +34,39 @@ interface AlipayProduct extends IProduct {
   duration: number;
 }
 
-export class AlipayAdapter implements IStoreAdapter<AlipayProduct> {
+export class AlipayService extends IPayingService<AlipayProduct> {
   private alipay: Alipay;
 
-  type = 'alipay';
-
   constructor(public config: AlipayConfig) {
+    super();
     this.alipay = new Alipay(config.sdk);
   }
 
-  async validatePurchase(
-    callbackData: AlipayPaidCallbackData,
-  ): Promise<OrderPaid> {
-    // TODO: 错误处理
-    if (
-      callbackData.trade_status !== 'TRADE_SUCCESS' &&
-      callbackData.trade_status !== 'TRADE_FINISHED'
-    ) {
-      throw new Error(
-        `Expected "TRADE_SUCCESS" OR "TRADE_FINISHED"  Got ${callbackData.trade_status}`,
-      );
-    }
-
-    this.alipay.validateNotifySign(callbackData);
-
-    return {
-      paidAt: new Date(callbackData.gmt_payment).getTime() as Timestamp,
-      transactionId: callbackData.out_trade_no as TransactionId,
-      callbackData,
-      status: 'success',
-    };
+  parseReceipt(): Promise<ApplyingReceipt<never>> {
+    throw new Error('Method not implemented.');
   }
 
-  async parseSigned(
-    callbackData: AlipaySignedCallbackData,
-  ): Promise<SignedData> {
-    if (callbackData.status !== 'NORMAL') {
-      throw new Error(
-        `INVALID_STATUS: Expected "NORMAL", got "${callbackData.status}"`,
-      );
+  getDuration(product: AlipayProduct): number {
+    if (product.unit === 'DAY') {
+      return product.duration * ms('1d');
+    } else if (product.unit === 'MONTH') {
+      return product.duration * ms('30d');
+    } else {
+      throw new Error(`INVALID_UNIT: ${product.unit}`);
     }
-
-    this.alipay.validateNotifySign(callbackData);
-
-    return {
-      signedAt: new Date(callbackData.sign_time).getTime() as Timestamp,
-      originalTransactionId:
-        callbackData.external_agreement_no as OriginalTransactionId,
-    };
   }
 
-  createPurchase(): Promise<void> {
+  async parseCallback(callback: AlipayCallbackData): Promise<Action> {
+    if (callback.notify_type === 'dut_user_sign') {
+      return this.parseSigned(callback);
+    } else if (callback.notify_type === 'trade_status_sync') {
+      return this.validatePurchase(callback);
+    }
+
+    throw new Error(`INVALID_NOTIFY: ${callback}`);
+  }
+
+  preparePurchase(): Promise<void> {
     throw new Error('Method not implemented.');
   }
 
@@ -91,8 +78,26 @@ export class AlipayAdapter implements IStoreAdapter<AlipayProduct> {
     return uuid() as TransactionId;
   }
 
-  async createSubscription(
-    creation: SubscriptionCreation<AlipayProduct>,
+  async preparePurchaseData(
+    options: PurchaseCreation<AlipayProduct>,
+  ): Promise<string> {
+    let {product, transactionId} = options;
+
+    let orderInfo = this.alipay.sign('alipay.trade.app.pay', {
+      notify_url: this.config.paidCallbackURL,
+      bizContent: {
+        subject: product.subject,
+        total_amount: product.amount,
+        out_trade_no: transactionId,
+        product_code: 'QUICK_MSECURITY_PAY',
+      },
+    });
+
+    return orderInfo;
+  }
+
+  async prepareSubscriptionData(
+    creation: PayingServiceSubscriptionPrepareOptions<AlipayProduct>,
   ): Promise<string> {
     let {
       transactionId,
@@ -150,7 +155,77 @@ export class AlipayAdapter implements IStoreAdapter<AlipayProduct> {
       bizContent,
     });
   }
+
+  async cancelSubscription(
+    options: CancelSubscriptionOptions,
+  ): Promise<boolean> {
+    // TODO: 优化 Ticket 链路
+
+    let {subscription} = options;
+
+    let unSignResult = (await this.alipay.sdk.exec(
+      'alipay.user.agreement.unsign',
+      {
+        bizContent: {
+          personal_product_code: 'CYCLE_PAY_AUTH_P',
+          sign_scene: 'INDUSTRY|SOCIALIZATION',
+          external_agreement_no: subscription.id,
+        },
+      },
+    )) as AlipaySdkCommonResult;
+
+    if (unSignResult.code === '10000') {
+      return true;
+    } else {
+      console.error(JSON.stringify(unSignResult, null, 2));
+    }
+
+    return false;
+  }
+
+  private async validatePurchase(
+    callbackData: AlipayPaidCallbackData,
+  ): Promise<PaymentAction> {
+    // TODO: 错误处理
+    if (
+      callbackData.trade_status !== 'TRADE_SUCCESS' &&
+      callbackData.trade_status !== 'TRADE_FINISHED'
+    ) {
+      throw new Error(
+        `Expected "TRADE_SUCCESS" OR "TRADE_FINISHED"  Got ${callbackData.trade_status}`,
+      );
+    }
+
+    this.alipay.validateNotifySign(callbackData);
+
+    return {
+      purchasedAt: new Date(callbackData.gmt_payment).getTime() as Timestamp,
+      transactionId: callbackData.out_trade_no as TransactionId,
+      type: 'payment',
+    };
+  }
+
+  private async parseSigned(
+    callbackData: AlipaySignedCallbackData,
+  ): Promise<SubscribedAction> {
+    if (callbackData.status !== 'NORMAL') {
+      throw new Error(
+        `INVALID_STATUS: Expected "NORMAL", got "${callbackData.status}"`,
+      );
+    }
+
+    this.alipay.validateNotifySign(callbackData);
+
+    return {
+      type: 'subscribed',
+      subscribedAt: new Date(callbackData.sign_time).getTime() as Timestamp,
+      originalTransactionId:
+        callbackData.external_agreement_no as OriginalTransactionId,
+    };
+  }
 }
+
+type AlipayCallbackData = AlipayPaidCallbackData | AlipaySignedCallbackData;
 
 export interface AlipayPaidCallbackData {
   gmt_create: string; // '2021-11-19 14:53:38';

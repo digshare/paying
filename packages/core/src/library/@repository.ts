@@ -23,8 +23,8 @@ interface Collections {
 }
 
 const COLLECTION_NAME_DICT: {[TName in keyof Collections]: string} = {
-  'original-transaction': 'enverse-original-transaction',
-  transaction: 'enverse-transaction',
+  'original-transaction': 'paying-original-transaction',
+  transaction: 'paying-transaction',
 };
 
 export class Repository {
@@ -48,9 +48,11 @@ export class Repository {
   }
 
   async getSubscriptionById(
+    serviceName: string,
     originalTransactionId: OriginalTransactionId,
   ): Promise<Subscription | undefined> {
     let originalTransaction = await this.getOriginalTransactionById(
+      serviceName,
       originalTransactionId,
     );
 
@@ -121,36 +123,31 @@ export class Repository {
     return (await this.collectionOfType('transaction')
       .find({
         originalTransactionId: id,
+        type: 'subscription',
       })
       .sort({createdAt: -1})
       .toArray()) as SubscriptionTransactionDocument[];
   }
 
   async getTransactionById(
+    serviceName: string,
     transactionId: TransactionId,
   ): Promise<TransactionDocument | undefined> {
-    let doc = (await this.db
-      .collection('enverse-pay-transactions')
-      .findOne({_id: transactionId})) as TransactionDocument | null;
-
-    return doc ?? undefined;
-  }
-
-  async getSubscriptionTransactionById(
-    transactionId: TransactionId,
-  ): Promise<SubscriptionTransactionDocument | undefined> {
-    let doc = (await this.db
-      .collection('enverse-pay-transactions')
-      .findOne({_id: transactionId})) as SubscriptionTransactionDocument | null;
+    let doc = await this.collectionOfType('transaction').findOne({
+      _id: transactionId,
+      service: serviceName,
+    });
 
     return doc ?? undefined;
   }
 
   async getOriginalTransactionById(
+    serviceName: string,
     originalTransactionId: OriginalTransactionId,
   ): Promise<OriginalTransactionDocument | undefined> {
     let doc = await this.collectionOfType('original-transaction').findOne({
       _id: originalTransactionId,
+      service: serviceName,
     });
 
     return doc ?? undefined;
