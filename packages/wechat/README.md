@@ -1,4 +1,4 @@
-# @enverse-pay/wechat
+# @paying/wechat
 
 Just another awesome magic.
 

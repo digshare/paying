@@ -1,12 +1,12 @@
 {
   "extends": "@mufan/code-boilerplates/typescript",
   "options": {
-    "name": "enverse-pay",
+    "name": "paying",
     "license": "MIT",
     "author": "enverse",
     "packages": [
       {
-        "name": "@enverse-pay/core",
+        "name": "@paying/core",
         "tsProjects": [
           {
             "name": "library"
@@ -19,13 +19,13 @@
         ]
       },
       {
-        "name": "@enverse-pay/alipay",
+        "name": "@paying/alipay",
         "tsProjects": [
           {
             "name": "library",
             "references": [
               {
-                "package": "@enverse-pay/core",
+                "package": "@paying/core",
                 "project": "library"
               }
             ]
@@ -38,13 +38,13 @@
         ]
       },
       {
-        "name": "@enverse-pay/wechat",
+        "name": "@paying/wechat",
         "tsProjects": [
           {
             "name": "library",
             "references": [
               {
-                "package": "@enverse-pay/core",
+                "package": "@paying/core",
                 "project": "library"
               }
             ]
@@ -57,7 +57,7 @@
         ]
       },
       {
-        "name": "@enverse-pay/apple",
+        "name": "@paying/apple",
         "tsProjects": [
           {
             "name": "library"

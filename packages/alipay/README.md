@@ -1,4 +1,4 @@
-# @enverse-pay/alipay
+# @paying/alipay
 
 Just another awesome magic.
 

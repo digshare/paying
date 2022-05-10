@@ -1,4 +1,4 @@
-# @enverse-pay/apple
+# @paying/apple
 
 Just another awesome magic.
 

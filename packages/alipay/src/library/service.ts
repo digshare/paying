@@ -10,8 +10,8 @@ import type {
   SubscribedAction,
   Timestamp,
   TransactionId,
-} from '@enverse-pay/core';
-import {IPayingService} from '@enverse-pay/core';
+} from '@paying/core';
+import {IPayingService} from '@paying/core';
 import type {AlipaySdkCommonResult, AlipaySdkConfig} from 'alipay-sdk';
 import {format} from 'date-fns';
 import ms from 'ms';

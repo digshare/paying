@@ -1,4 +1,4 @@
-# @enverse-pay/core
+# @paying/core
 
 Just another awesome magic.
 

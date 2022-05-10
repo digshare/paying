@@ -1,5 +1,5 @@
 {
-  "name": "@enverse-pay/alipay",
+  "name": "@paying/alipay",
   "version": "0.0.0",
   "license": "MIT",
   "author": "enverse",
@@ -8,7 +8,7 @@
     "require": "./bld/library/index.js"
   },
   "dependencies": {
-    "@enverse-pay/core": "*",
+    "@paying/core": "*",
     "alipay-sdk": "^3.2.0",
     "date-fns": "^2.28.0",
     "tslib": "^2.4.0",
