@@ -8,7 +8,7 @@
     "lint": "run-in-every eslint-project --parallel --echo -- eslint --config {configFileName} .",
     "lint-prettier": "prettier --check .",
     "test": "yarn lint-prettier && yarn build && yarn lint",
-    "core": "yarn workspace @enverse-pay/core"
+    "core": "yarn workspace @paying/core"
   },
   "workspaces": [
     "packages/core",
