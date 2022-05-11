@@ -60,7 +60,13 @@
         "name": "@paying/apple",
         "tsProjects": [
           {
-            "name": "library"
+            "name": "library",
+            "references": [
+              {
+                "package": "@paying/core",
+                "project": "library"
+              }
+            ]
           },
           {
             "name": "test",
