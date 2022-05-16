@@ -3,6 +3,7 @@ import type {Nominal} from 'tslang';
 import type {Repository} from '../@repository';
 
 import type {
+  ProductId,
   SubscriptionTransactionDocument,
   Timestamp,
   UserId,
@@ -12,8 +13,10 @@ export type OriginalTransactionId = Nominal<string, 'original-transaction-id'>;
 
 export interface OriginalTransactionDocument {
   _id: OriginalTransactionId;
-  // thirdPartyId: string | undefined;
-  product: string;
+  // 在有效期内的订阅
+  product: ProductId;
+  // 下一次订阅
+  renewalProduct: string;
   productGroup: string | undefined;
 
   createdAt: Timestamp;
@@ -28,14 +31,33 @@ export interface OriginalTransactionDocument {
   cancelReason: unknown | undefined;
   renewalEnabled: boolean;
   lastFailedReason?: unknown;
+  lastFailedAt?: Timestamp;
   user: UserId;
   service: string;
-  raw: unknown | undefined;
+  serviceExtra: unknown | undefined;
 }
 
 export class Subscription {
   get id(): OriginalTransactionId {
     return this.originalTransaction._id;
+  }
+
+  get productIdentifier(): string {
+    return (
+      this.originalTransaction.productGroup ?? this.originalTransaction.product
+    );
+  }
+
+  get expiresAt(): Timestamp | undefined {
+    return this.originalTransaction.expiresAt;
+  }
+
+  get startsAt(): Timestamp | undefined {
+    return this.originalTransaction.startsAt;
+  }
+
+  get renewalEnabled(): boolean {
+    return this.originalTransaction.renewalEnabled;
   }
 
   get status(): 'pending' | 'expired' | 'canceled' | 'active' | 'not-started' {

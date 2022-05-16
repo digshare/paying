@@ -46,20 +46,30 @@ export type TransactionDocument =
   | PurchaseTransactionDocument
   | SubscriptionTransactionDocument;
 
-class Transaction {
+export class Transaction {
+  get id(): TransactionId {
+    return this.transactionDoc._id;
+  }
+
+  get originalTransactionId(): OriginalTransactionId | undefined {
+    return this.transactionDoc.type === 'subscription'
+      ? this.transactionDoc.originalTransactionId
+      : undefined;
+  }
+
   get status(): 'pending' | 'completed' | 'canceled' | 'failed' {
-    if (this.transactionData.canceledAt) {
+    if (this.transactionDoc.canceledAt) {
       return 'canceled';
-    } else if (this.transactionData.completedAt) {
+    } else if (this.transactionDoc.completedAt) {
       return 'completed';
-    } else if (this.transactionData.failedAt) {
+    } else if (this.transactionDoc.failedAt) {
       return 'failed';
     } else {
       return 'pending';
     }
   }
 
-  constructor(private transactionData: TransactionDocument) {}
+  constructor(private transactionDoc: TransactionDocument) {}
 }
 
 export class SubscriptionTransaction extends Transaction {

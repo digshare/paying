@@ -3,13 +3,17 @@ import type {
   ApplyingReceipt,
   CancelSubscriptionOptions,
   IProduct,
+  OriginalTransactionDocument,
   OriginalTransactionId,
   PayingServiceSubscriptionPrepareOptions,
-  PaymentAction,
+  PaymentConfirmedAction,
+  PrepareSubscriptionReturn,
   PurchaseCreation,
   SubscribedAction,
+  SubscriptionStatusCheckingResult,
   Timestamp,
   TransactionId,
+  TransactionStatusCheckingResult,
 } from '@paying/core';
 import {IPayingService} from '@paying/core';
 import type {AlipaySdkCommonResult, AlipaySdkConfig} from 'alipay-sdk';
@@ -37,8 +41,8 @@ interface AlipayProduct extends IProduct {
 export class AlipayService extends IPayingService<AlipayProduct> {
   private alipay: Alipay;
 
-  constructor(public config: AlipayConfig) {
-    super();
+  constructor(public config: AlipayConfig, products: AlipayProduct[]) {
+    super(products);
     this.alipay = new Alipay(config.sdk);
   }
 
@@ -66,10 +70,6 @@ export class AlipayService extends IPayingService<AlipayProduct> {
     throw new Error(`INVALID_NOTIFY: ${callback}`);
   }
 
-  preparePurchase(): Promise<void> {
-    throw new Error('Method not implemented.');
-  }
-
   generateOriginalTransactionId(): OriginalTransactionId {
     return uuid() as OriginalTransactionId;
   }
@@ -80,7 +80,7 @@ export class AlipayService extends IPayingService<AlipayProduct> {
 
   async preparePurchaseData(
     options: PurchaseCreation<AlipayProduct>,
-  ): Promise<string> {
+  ): Promise<{response: string; duration: number}> {
     let {product, transactionId} = options;
 
     let orderInfo = this.alipay.sign('alipay.trade.app.pay', {
@@ -93,19 +93,21 @@ export class AlipayService extends IPayingService<AlipayProduct> {
       },
     });
 
-    return orderInfo;
+    return {response: orderInfo, duration: this.getDuration(product)};
   }
 
   async prepareSubscriptionData(
     creation: PayingServiceSubscriptionPrepareOptions<AlipayProduct>,
-  ): Promise<string> {
+  ): Promise<PrepareSubscriptionReturn> {
+    // let duration = this.getDuration(creation.product);
+
     let {
       transactionId,
       originalTransactionId,
       paymentExpiresAt,
-      expiresAt,
       userId,
-      product: {id: productId, amount, subject, unit, duration, maxAmount},
+      startsAt,
+      product: {amount, subject, unit, duration, maxAmount},
     } = creation;
 
     let bizContent = {
@@ -142,7 +144,7 @@ export class AlipayService extends IPayingService<AlipayProduct> {
           period: duration,
           // alipay-test: 测试阿里自动扣费用
           // execute_time: format(testAt, 'yyyy-MM-dd'),
-          execute_time: format(expiresAt, 'yyyy-MM-dd'), // 下次付款时间，扣款可提前五天扣
+          execute_time: format(startsAt + duration, 'yyyy-MM-dd'), // 下次付款时间，扣款可提前五天扣
           single_amount: maxAmount, // 单次扣款最大金额single_amount是周期扣款产品必填，即每次发起扣款时限制的最大金额，单位为元。商户每次发起扣款都不允许大于此金额。
           // total_amount: 10000, // 总金额限制，单位为元。如果传入此参数，商户多次扣款的累计金额不允许超过此金额。
           // total_payments: 10, // 总扣款次数。如果传入此参数，则商户成功扣款的次数不能超过此次数限制（扣款失败不计入）。
@@ -150,17 +152,80 @@ export class AlipayService extends IPayingService<AlipayProduct> {
       },
     };
 
-    return this.alipay.sign('alipay.trade.app.pay', {
-      notify_url: this.config.paidCallbackURL,
-      bizContent,
-    });
+    return {
+      response: this.alipay.sign('alipay.trade.app.pay', {
+        notify_url: this.config.paidCallbackURL,
+        bizContent,
+      }),
+      duration,
+    };
+  }
+
+  async rechargeSubscription(
+    originalTransaction: OriginalTransactionDocument,
+    paymentExpiresAt: Timestamp,
+  ): Promise<Action | undefined> {
+    let alipayOriginalTransactionId = (originalTransaction.serviceExtra as any)
+      .agreementNo;
+    let transactionId = this.generateTransactionId();
+    let product = this.requireProduct(originalTransaction.product);
+    let startsAt = originalTransaction.expiresAt ?? (Date.now() as Timestamp);
+
+    let result = (await this.alipay.sdk.exec('alipay.trade.pay', {
+      bizContent: {
+        out_trade_no: transactionId,
+        // 原价续费
+        total_amount: product.amount,
+        subject: product.subject,
+        product_code: 'CYCLE_PAY_AUTH',
+        time_expire: paymentExpiresAt,
+        agreement_params: {
+          agreement_no: alipayOriginalTransactionId,
+        },
+      },
+    })) as AlipayRechargeSubscriptionResponse;
+
+    if (result.code === '10000') {
+      let purchasedAt = new Date(result.gmtPayment).getTime() as Timestamp;
+
+      return {
+        type: 'subscription-renewal',
+        transactionId,
+        product,
+        startsAt,
+        expiresAt: (startsAt + this.getDuration(product)) as Timestamp,
+        originalTransactionId: originalTransaction._id,
+        purchasedAt,
+      };
+    } else if (result.code === '10003') {
+      return undefined;
+    } else if (
+      result.code === '40004' &&
+      (result.subCode === 'ACQ.TRADE_BUYER_NOT_MATCH' ||
+        result.subCode === 'ACQ.MERCHANT_AGREEMENT_NOT_EXIST' ||
+        result.subCode === 'ACQ.MERCHANT_AGREEMENT_INVALID' ||
+        result.subCode === 'ACQ.BUYER_NOT_EXIST' ||
+        result.subCode === 'ACQ.AGREEMENT_NOT_EXIST')
+    ) {
+      return {
+        type: 'subscription-canceled',
+        originalTransactionId: originalTransaction._id,
+        canceledAt: Date.now() as Timestamp,
+      };
+    } else {
+      // TODO: Retry
+      return {
+        type: 'recharge-failed',
+        originalTransactionId: originalTransaction._id,
+        failedAt: Date.now() as Timestamp,
+        reason: result,
+      };
+    }
   }
 
   async cancelSubscription(
     options: CancelSubscriptionOptions,
   ): Promise<boolean> {
-    // TODO: 优化 Ticket 链路
-
     let {subscription} = options;
 
     let unSignResult = (await this.alipay.sdk.exec(
@@ -183,25 +248,97 @@ export class AlipayService extends IPayingService<AlipayProduct> {
     return false;
   }
 
+  async queryTransactionStatus(
+    transactionId: TransactionId,
+  ): Promise<TransactionStatusCheckingResult> {
+    let result = (await this.alipay.sdk.exec('alipay.trade.query', {
+      bizContent: {
+        out_trade_no: transactionId,
+      },
+    })) as AlipayTradeQueryResult;
+
+    if (
+      result.tradeStatus === 'TRADE_FINISHED' ||
+      result.tradeStatus === 'TRADE_SUCCESS'
+    ) {
+      return {
+        type: 'success',
+        purchasedAt: new Date(result.sendPayDate).getTime() as Timestamp,
+      };
+    } else if (
+      result.tradeStatus === 'TRADE_CLOSED' ||
+      (result.code === '40004' && result.subCode === 'ACQ.TRADE_NOT_EXIST')
+    ) {
+      return {
+        type: 'canceled',
+        canceledAt: Date.now() as Timestamp,
+      };
+    } else {
+      return {
+        type: 'pending',
+      };
+    }
+  }
+
+  async querySubscriptionStatus(
+    originalTransactionId: OriginalTransactionId,
+  ): Promise<SubscriptionStatusCheckingResult> {
+    let result = (await this.alipay.sdk.exec(
+      'alipay.user.agreement.query',
+      {
+        bizContent: {
+          external_agreement_no: originalTransactionId,
+          sign_scene: 'INDUSTRY|SOCIALIZATION',
+          personal_product_code: 'CYCLE_PAY_AUTH_P',
+        },
+      },
+      // {validateSign: true},
+    )) as AlipayAgreementQueryResult;
+
+    if (result.status === 'NORMAL') {
+      return {
+        type: 'subscribed',
+        subscribedAt: new Date(result.signTime).getTime() as Timestamp,
+      };
+    } else if (
+      result.code === '40004' &&
+      result.subCode !== 'SYSTEM_ERROR' &&
+      result.subCode !== 'INVALID_PARAMETER'
+    ) {
+      return {
+        type: 'canceled',
+        canceledAt: Math.min(
+          new Date(result.invalidTime).getTime(),
+          Date.now(),
+        ) as Timestamp,
+        reason: result,
+      };
+    } else {
+      return {
+        type: 'pending',
+      };
+    }
+  }
+
   private async validatePurchase(
     callbackData: AlipayPaidCallbackData,
-  ): Promise<PaymentAction> {
+  ): Promise<PaymentConfirmedAction> {
     // TODO: 错误处理
     if (
       callbackData.trade_status !== 'TRADE_SUCCESS' &&
       callbackData.trade_status !== 'TRADE_FINISHED'
     ) {
       throw new Error(
-        `Expected "TRADE_SUCCESS" OR "TRADE_FINISHED"  Got ${callbackData.trade_status}`,
+        `Expected "TRADE_SUCCESS" OR "TRADE_FINISHED" but got ${callbackData.trade_status}`,
       );
     }
 
     this.alipay.validateNotifySign(callbackData);
 
     return {
+      type: 'payment-confirmed',
       purchasedAt: new Date(callbackData.gmt_payment).getTime() as Timestamp,
       transactionId: callbackData.out_trade_no as TransactionId,
-      type: 'payment',
     };
   }
 
@@ -221,6 +358,9 @@ export class AlipayService extends IPayingService<AlipayProduct> {
       subscribedAt: new Date(callbackData.sign_time).getTime() as Timestamp,
       originalTransactionId:
         callbackData.external_agreement_no as OriginalTransactionId,
+      extra: {
+        agreementNo: callbackData.agreement_no,
+      },
     };
   }
 }
@@ -280,4 +420,66 @@ export interface AlipaySignedCallbackData {
   sign_scene: 'INDUSTRY|SOCIALIZATION';
   status: 'NORMAL' | 'UNSIGN';
   alipay_logon_id: string; // '180******90';
+}
+
+export interface AlipayRechargeSubscriptionResponse {
+  code: string; // '10000',
+  subCode: string | undefined;
+  msg: string; // 'Success',
+  buyerLogonId: string; // '180******90',
+  buyerPayAmount: string; // '0.01',
+  buyerUserId: string; // '2088212270326166',
+  fundBillList: {amount: string; fundChannel: 'ALIPAYACCOUNT'}[]; //  [ { amount: '0.01', fundChannel: 'ALIPAYACCOUNT' } ],
+  gmtPayment: string; // '2021-11-23 18:15:01',
+  invoiceAmount: string; // '0.01',
+  // transaction_id
+  outTradeNo: string; // '30209541012838338030000524743',
+  pointAmount: string; // '0.00',
+  receiptAmount: string; // '0.01',
+  totalAmount: string; // '0.01',
+  tradeNo: string; // '2021112322001426161430924837'
+}
+
+/**
+ * https://opendocs.alipay.com/apis/028xq9#响应参数
+ */
+export interface AlipayTradeQueryResult {
+  code: '10000' | string;
+  msg: string;
+  subCode: 'ACQ.TRADE_NOT_EXIST' | string;
+  subMsg: string;
+  buyerLogonId: string;
+  buyerPayAmount: string;
+  buyerUserId: string;
+  invoiceAmount: string;
+  outTradeNo: string;
+  pointAmount: string;
+  receiptAmount: string;
+  sendPayDate: string;
+  totalAmount: string;
+  tradeNo: string;
+  tradeStatus:
+    | 'WAIT_BUYER_PAY'
+    | 'TRADE_SUCCESS'
+    | 'TRADE_CLOSED'
+    | 'TRADE_FINISHED';
+}
+
+export interface AlipayAgreementQueryResult {
+  code: string; // '10000',
+  subCode: string | undefined;
+  msg: string; // 'Success',
+  agreementNo: string; // '20215922765358469116',
+  alipayLogonId: string; // '180******90',
+  externalAgreementNo?: OriginalTransactionId; // '30207899379391818180703654366',
+  externalLogonId: string; // '18600000000',
+  invalidTime: string; // '2115-02-01 00:00:00',
+  personalProductCode: string; // 'CYCLE_PAY_AUTH_P',
+  pricipalType: string; // 'CARD',
+  principalId: string; // '2088212270326166',
+  signScene: string; // 'INDUSTRY|SOCIALIZATION',
+  signTime: string; // '2021-11-22 17:31:57',
+  status: 'NORMAL' | 'TEMP' | 'STOP'; // 'NORMAL',
+  thirdPartyType: string; // 'PARTNER',
+  validTime: string; // '2021-11-22 17:31:57'
 }

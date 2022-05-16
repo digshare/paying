@@ -10,7 +10,7 @@ import type {
   TransactionId,
   UserId,
 } from './definitions';
-import {Subscription} from './definitions';
+import {Subscription, User} from './definitions';
 
 export interface RepositoryConfig {
   url: string;
@@ -45,6 +45,32 @@ export class Repository {
     await this.collectionOfType('original-transaction').insertOne(
       originalTransaction,
     );
+  }
+
+  async getUserById(userId: UserId): Promise<User> {
+    let originalTransactions = await this.collectionOfType(
+      'original-transaction',
+    )
+      .find({
+        user: userId,
+      })
+      .toArray();
+
+    let subscriptions: Subscription[] = [];
+
+    for (const originalTransaction of originalTransactions) {
+      subscriptions.push(
+        new Subscription(
+          originalTransaction,
+          await this.getSubscriptionTransactionsByOriginalTransactionId(
+            originalTransaction._id,
+          ),
+          this,
+        ),
+      );
+    }
+
+    return new User(userId, subscriptions);
   }
 
   async getSubscriptionById(
