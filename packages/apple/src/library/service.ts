@@ -6,6 +6,7 @@ import type {
   OriginalTransactionDocument,
   OriginalTransactionId,
   PayingServiceSubscriptionPrepareOptions,
+  PreparePurchaseReturn,
   PrepareSubscriptionReturn,
   ProductId,
   PurchaseCreation,
@@ -78,7 +79,9 @@ export class AppleService extends IPayingService<AppleProduct> {
     throw new Error('Method not implemented.');
   }
 
-  preparePurchaseData(_options: PurchaseCreation): Promise<unknown> {
+  preparePurchaseData(
+    _options: PurchaseCreation<AppleProduct>,
+  ): Promise<PreparePurchaseReturn> {
     throw new Error('Method not implemented.');
   }
 
@@ -124,9 +127,8 @@ export class AppleService extends IPayingService<AppleProduct> {
         transactionId: transactionInfo.transactionId,
         originalTransactionId: transactionInfo.originalTransactionId,
         purchasedAt: transactionInfo.purchaseDate,
-        expiresAt: transactionInfo.expiresDate,
+        duration: transactionInfo.expiresDate - transactionInfo.purchaseDate,
         product: this.requireProduct(transactionInfo.productId),
-        startsAt: transactionInfo.purchaseDate,
       };
     } else if (notificationType === 'DID_CHANGE_RENEWAL_STATUS') {
       return {
@@ -176,7 +178,7 @@ export class AppleService extends IPayingService<AppleProduct> {
     let receiptInfos: AppleSubscriptionReceiptInfo[] = _.sortBy(
       latestReceiptInfos.filter(
         info =>
-          // TODO: 取消的要不要存起来 /  show 目前依赖了该验证
+          // TODO: 取消的要不要存起来
           // TODO: 处理退款
           info.cancellation_date_ms === undefined,
       ),

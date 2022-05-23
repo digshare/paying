@@ -7,8 +7,19 @@
   "exports": {
     "require": "./bld/library/index.js"
   },
+  "scripts": {
+    "build": "tsc --project src/library/tsconfig.json",
+    "jest-watch": "jest --watchAll --coverage"
+  },
   "dependencies": {
     "mongodb": "^4.5.0",
+    "ms": "^2.1.3",
     "tslib": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.182",
+    "@types/ms": "^0.7.31",
+    "lodash": "^4.17.21",
+    "uuid": "^8.3.2"
   }
 }

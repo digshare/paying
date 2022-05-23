@@ -1,12 +1,18 @@
 import type {Nominal} from 'tslang';
+import * as x from 'x-value';
 
 import type {OriginalTransactionId} from './original-transaction';
 
-export type Timestamp = Nominal<number, 'timestamp'>;
 export type TransactionId = Nominal<string, 'transaction-id'>;
-export type ProductId = Nominal<string, 'product-id'>;
 
-export type UserId = Nominal<string, 'user-id'>;
+export const Timestamp = x.number.nominal<'timestamp'>();
+export type Timestamp = x.TypeOf<typeof Timestamp>;
+
+export const ProductId = x.string.nominal<'product-id'>();
+export type ProductId = x.TypeOf<typeof ProductId>;
+
+export const UserId = x.string.nominal<'user-id'>();
+export type UserId = x.TypeOf<typeof UserId>;
 
 export type TransactionType = 'purchase' | 'subscription';
 
@@ -34,6 +40,11 @@ interface ITransactionDocument<TType extends TransactionType> {
 export interface PurchaseTransactionDocument
   extends ITransactionDocument<'purchase'> {}
 
+/**
+ * startsAt 在第一次创建 original-transaction 时会被 apply在后续续费的
+ * transaction 确认后，original-transaction 会在原有的 expiresAt 基础上叠加
+ * duration, 此时 startsAt 无效. 即 startsAt 在续费时默认为上一次的 expiresAt
+ */
 export interface SubscriptionTransactionDocument
   extends ITransactionDocument<'subscription'> {
   type: 'subscription';
@@ -46,34 +57,58 @@ export type TransactionDocument =
   | PurchaseTransactionDocument
   | SubscriptionTransactionDocument;
 
-export class Transaction {
+export abstract class AbstractTransaction {
   get id(): TransactionId {
-    return this.transactionDoc._id;
-  }
-
-  get originalTransactionId(): OriginalTransactionId | undefined {
-    return this.transactionDoc.type === 'subscription'
-      ? this.transactionDoc.originalTransactionId
-      : undefined;
+    return this.doc._id;
   }
 
   get status(): 'pending' | 'completed' | 'canceled' | 'failed' {
-    if (this.transactionDoc.canceledAt) {
+    if (this.doc.canceledAt) {
       return 'canceled';
-    } else if (this.transactionDoc.completedAt) {
+    } else if (this.doc.completedAt) {
       return 'completed';
-    } else if (this.transactionDoc.failedAt) {
+    } else if (this.doc.failedAt) {
       return 'failed';
     } else {
       return 'pending';
     }
   }
 
-  constructor(private transactionDoc: TransactionDocument) {}
+  get productId(): ProductId {
+    return this.doc.product;
+  }
+
+  constructor(public doc: TransactionDocument) {}
 }
 
-export class SubscriptionTransaction extends Transaction {
-  constructor(transactionData: SubscriptionTransactionDocument) {
-    super(transactionData);
+export class SubscriptionTransaction extends AbstractTransaction {
+  get originalTransactionId(): OriginalTransactionId {
+    return this.doc.originalTransactionId;
+  }
+
+  get duration(): number {
+    return this.doc.duration;
+  }
+
+  get startsAt(): Timestamp {
+    return this.doc.startsAt;
+  }
+
+  get canceledAt(): Timestamp | undefined {
+    return this.doc.canceledAt;
+  }
+
+  get completedAt(): Timestamp | undefined {
+    return this.doc.completedAt;
+  }
+
+  constructor(public override doc: SubscriptionTransactionDocument) {
+    super(doc);
+  }
+}
+
+export class PurchaseTransaction extends AbstractTransaction {
+  constructor(public override doc: PurchaseTransactionDocument) {
+    super(doc);
   }
 }

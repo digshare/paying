@@ -1,25 +1,32 @@
 import type {RepositoryConfig} from './@repository';
 import {Repository} from './@repository';
 import type {
+  AbstractTransaction,
   Action,
   ChangeRenewalInfoAction,
   ChangeRenewalStatusAction,
   IPayingService,
+  IProduct,
   OriginalTransactionDocument,
   PayingServiceSubscriptionPrepareOptions,
   PaymentConfirmedAction,
   PurchaseCreation,
+  PurchaseReceipt,
   PurchaseTransactionDocument,
   RechargeFailed,
   SubscribedAction,
   Subscription,
   SubscriptionCanceledAction,
+  SubscriptionReceipt,
   SubscriptionRenewalAction,
   SubscriptionTransactionDocument,
   Timestamp,
+  TransactionDocument,
+  TransactionId,
+  User,
   UserId,
 } from './definitions';
-import {Transaction} from './definitions';
+import {SubscriptionTransaction} from './definitions';
 
 interface PayingConfig {
   repository: RepositoryConfig;
@@ -28,39 +35,56 @@ interface PayingConfig {
 }
 
 type InferProduct<TPayingService extends IPayingService> =
-  TPayingService['__productType'];
+  TPayingService['products'][number];
 
-type ActionToHandler = {
+type ActionToHandler<TServiceKey extends string> = {
   [TType in Action['type']]: (
-    serviceName: string,
+    serviceName: TServiceKey,
     action: Extract<Action, {type: TType}>,
   ) => Promise<void>;
 };
 
-export class Paying<TPayingService extends IPayingService> {
+interface PrepareSubscriptionOptions<TProduct extends IProduct> {
+  product: TProduct;
+  userId: UserId;
+}
+
+export class Paying<
+  TPayingService extends IPayingService,
+  TServiceKey extends string,
+> {
+  ready: Promise<void>;
+
   private repository: Repository;
-  private actionHandler: ActionToHandler = {
-    subscribed: this.handleSubscribed,
-    'payment-confirmed': this.handlePaymentConfirmed,
-    'change-renewal-info': this.handleChangeRenewalInfo,
-    'change-renewal-status': this.handleChangeRenewalStatus,
-    'subscription-renewal': this.handleRenewal,
-    'subscription-canceled': this.handleSubscriptionCanceled,
-    'recharge-failed': this.rechargeFailed,
+  private actionHandler: ActionToHandler<TServiceKey> = {
+    subscribed: this.handleSubscribed.bind(this),
+    'payment-confirmed': this.handlePaymentConfirmed.bind(this),
+    'change-renewal-info': this.handleChangeRenewalInfo.bind(this),
+    'change-renewal-status': this.handleChangeRenewalStatus.bind(this),
+    'subscription-renewal': this.handleRenewal.bind(this),
+    'subscription-canceled': this.handleSubscriptionCanceled.bind(this),
+    'recharge-failed': this.rechargeFailed.bind(this),
   };
 
   constructor(
-    readonly services: Record<string, IPayingService>,
+    readonly services: Record<TServiceKey, IPayingService>,
     public config: PayingConfig,
   ) {
     this.repository = new Repository(config.repository);
+
+    this.ready = this.repository.ready;
+  }
+
+  async user(id: UserId): Promise<User> {
+    return this.repository.getUserById(id);
   }
 
   async prepareSubscription(
-    serviceName: string,
-    product: InferProduct<TPayingService>,
-    userId: UserId,
-  ): Promise<any> {
+    serviceName: TServiceKey,
+    options: PrepareSubscriptionOptions<InferProduct<TPayingService>>,
+  ): Promise<{subscription: Subscription; response: unknown}> {
+    let {product, userId} = options;
+
     let activeSubscription: Subscription | undefined;
 
     if (product.group) {
@@ -75,11 +99,20 @@ export class Paying<TPayingService extends IPayingService> {
       await this.cancelSubscription(serviceName, activeSubscription);
     }
 
-    return this.createSubscription(serviceName, product, userId);
+    return this.createSubscription(serviceName, options, activeSubscription);
+  }
+
+  async getTransaction(
+    serviceName: TServiceKey,
+    id: TransactionId,
+  ): Promise<AbstractTransaction | undefined> {
+    let doc = await this.repository.getTransactionById(serviceName, id);
+
+    return doc && this.repository.buildTransactionFromDoc(doc);
   }
 
   async preparePurchase(
-    serviceName: string,
+    serviceName: TServiceKey,
     product: InferProduct<TPayingService>,
     userId: UserId,
   ): Promise<any> {
@@ -87,18 +120,18 @@ export class Paying<TPayingService extends IPayingService> {
 
     let now = new Date().getTime() as Timestamp;
 
-    let transactionId = service.generateTransactionId();
     let paymentExpiresAt = (now +
       this.config.purchaseExpiresAfter) as Timestamp;
 
     let purchaseCreation: PurchaseCreation = {
-      transactionId,
       product,
       paymentExpiresAt,
       userId,
     };
 
-    let result = await service.preparePurchaseData(purchaseCreation);
+    let {response, transactionId} = await service.preparePurchaseData(
+      purchaseCreation,
+    );
 
     let transactionDoc: PurchaseTransactionDocument = {
       _id: transactionId,
@@ -119,10 +152,10 @@ export class Paying<TPayingService extends IPayingService> {
 
     await this.repository.createTransaction(transactionDoc);
 
-    return result;
+    return response;
   }
 
-  async handleCallback(serviceName: string, data: unknown): Promise<void> {
+  async handleCallback(serviceName: TServiceKey, data: unknown): Promise<void> {
     let service = this.requireService(serviceName);
 
     let action = await service.parseCallback(data);
@@ -135,7 +168,7 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   async handleReceipt(
-    serviceName: string,
+    serviceName: TServiceKey,
     userId: UserId,
     receipt: unknown,
   ): Promise<void> {
@@ -143,38 +176,21 @@ export class Paying<TPayingService extends IPayingService> {
 
     let result = await service.parseReceipt(receipt);
 
-    if (result.purchase.length > 0) {
-      for (const purchase of result.purchase) {
-        await this.preparePurchase(serviceName, purchase.product, userId);
-
-        await this.handlePaymentConfirmed(serviceName, {
-          type: 'payment-confirmed',
-          transactionId: purchase.transactionId,
-          purchasedAt: purchase.purchasedAt,
-        });
-      }
-    }
-
     if (result.subscription) {
       let subscription = result.subscription;
 
-      await this.prepareSubscription(serviceName, subscription.product, userId);
-      await this.handleSubscribed(serviceName, {
-        type: 'subscribed',
-        originalTransactionId: subscription.originalTransactionId,
-        subscribedAt: subscription.subscribedAt,
-      });
+      await this.syncSubscription(serviceName, userId, subscription);
+    }
 
-      await this.handlePaymentConfirmed(serviceName, {
-        type: 'payment-confirmed',
-        transactionId: subscription.transactionId,
-        purchasedAt: subscription.purchasedAt,
-      });
+    if (result.purchase.length > 0) {
+      for (const purchase of result.purchase) {
+        await this.syncTransaction(serviceName, userId, purchase);
+      }
     }
   }
 
   async cancelSubscription(
-    serviceName: string,
+    serviceName: TServiceKey,
     subscription: Subscription,
   ): Promise<void> {
     let service = this.requireService(serviceName);
@@ -196,7 +212,7 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   async checkTransactions(
-    serviceName: string,
+    serviceName: TServiceKey,
     onError?: (error: unknown) => void,
   ): Promise<void> {
     let pendingTransactions = await this.repository
@@ -212,7 +228,10 @@ export class Paying<TPayingService extends IPayingService> {
       let transaction = (await pendingTransactions.next())!;
 
       try {
-        await this.checkTransaction(serviceName, new Transaction(transaction));
+        await this.checkTransaction(
+          serviceName,
+          this.repository.buildTransactionFromDoc(transaction),
+        );
       } catch (error) {
         onError?.(error);
       }
@@ -220,14 +239,14 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   // async checkSubscriptions(
-  //   serviceName: string,
+  //   serviceName: TServiceKey,
   //   breakPolicy: 'onError' | 'never',
   // ): Promise<void> {
   //   await this.checkSubscriptionRenewal(serviceName);
   // }
 
   async checkUncompletedSubscription(
-    serviceName: string,
+    serviceName: TServiceKey,
     onError?: (error: unknown) => void,
   ): Promise<void> {
     let service = this.requireService(serviceName);
@@ -269,12 +288,11 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   async checkSubscriptionRenewal(
-    serviceName: string,
+    serviceName: TServiceKey,
     onError?: (error: unknown) => void,
   ): Promise<void> {
     let service = this.requireService(serviceName);
-    let adventDate = (Date.now() +
-      this.config.purchaseExpiresAfter) as Timestamp;
+    let adventDate = (Date.now() + this.config.renewalBefore) as Timestamp;
 
     let originalTransactions = this.repository
       .collectionOfType('original-transaction')
@@ -304,7 +322,7 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   private async applyAction(
-    serviceName: string,
+    serviceName: TServiceKey,
     action: Action,
   ): Promise<void> {
     // TODO: type safe
@@ -312,7 +330,7 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   private async rechargeFailed(
-    _serviceName: string,
+    _serviceName: TServiceKey,
     action: RechargeFailed,
   ): Promise<void> {
     // TODO: record reason?
@@ -333,7 +351,7 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   private async handleSubscriptionCanceled(
-    _serviceName: string,
+    _serviceName: TServiceKey,
     action: SubscriptionCanceledAction,
   ): Promise<void> {
     await this.repository.collectionOfType('original-transaction').updateOne(
@@ -343,14 +361,15 @@ export class Paying<TPayingService extends IPayingService> {
       {
         $set: {
           canceledAt: action.canceledAt,
+          renewalEnabled: false,
         },
       },
     );
   }
 
   private async checkTransaction(
-    serviceName: string,
-    transaction: Transaction,
+    serviceName: TServiceKey,
+    transaction: AbstractTransaction,
   ): Promise<void> {
     let service = this.requireService(serviceName);
 
@@ -375,12 +394,15 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   private async cancelTransaction(
-    serviceName: string,
-    transaction: Transaction,
+    serviceName: TServiceKey,
+    transaction: AbstractTransaction,
     canceledAt: Timestamp,
     reason?: any,
   ): Promise<void> {
-    if (transaction.originalTransactionId) {
+    if (
+      transaction instanceof SubscriptionTransaction &&
+      transaction.originalTransactionId
+    ) {
       // TODO: original transaction 要不要一起取消
       // await this.repository.collectionOfType('original-transaction').updateOne()
     }
@@ -400,10 +422,10 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   private async handleSubscribed(
-    serviceName: string,
+    serviceName: TServiceKey,
     data: SubscribedAction,
   ): Promise<void> {
-    let {subscribedAt, originalTransactionId} = data;
+    let {subscribedAt, originalTransactionId, autoRenewalEnabled = true} = data;
 
     let originalTransaction = await this.repository.getOriginalTransactionById(
       serviceName,
@@ -416,16 +438,20 @@ export class Paying<TPayingService extends IPayingService> {
       );
     }
 
-    await this.repository
-      .collectionOfType('original-transaction')
-      .updateOne(
-        {_id: originalTransactionId, service: serviceName},
-        {$set: {subscribedAt, serviceExtra: data.extra}},
-      );
+    await this.repository.collectionOfType('original-transaction').updateOne(
+      {_id: originalTransactionId, service: serviceName},
+      {
+        $set: {
+          subscribedAt,
+          serviceExtra: data.extra,
+          renewalEnabled: autoRenewalEnabled,
+        },
+      },
+    );
   }
 
   private async handlePaymentConfirmed(
-    serviceName: string,
+    serviceName: TServiceKey,
     data: PaymentConfirmedAction,
   ): Promise<void> {
     let now = new Date().getTime() as Timestamp;
@@ -480,8 +506,17 @@ export class Paying<TPayingService extends IPayingService> {
       );
     }
 
+    let startsAt = originalTransactionDoc.startsAt ?? transactionDoc.startsAt;
+
     let lastExpiresAt =
       originalTransactionDoc.expiresAt ?? transactionDoc.startsAt;
+
+    if (lastExpiresAt !== transactionDoc.startsAt) {
+      throw new Error(
+        `Subscription should be continuous, ${lastExpiresAt} ${transactionDoc.startsAt}`,
+      );
+    }
+
     // TODO: 续费
     // 当有赠送时，支付宝是否要延迟续费
     let expiresAt = (transactionDoc.duration + lastExpiresAt) as Timestamp;
@@ -492,6 +527,7 @@ export class Paying<TPayingService extends IPayingService> {
       },
       {
         $set: {
+          startsAt,
           expiresAt,
         },
       },
@@ -499,7 +535,7 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   private async handleChangeRenewalInfo(
-    serviceName: string,
+    serviceName: TServiceKey,
     renewalInfo: ChangeRenewalInfoAction,
   ): Promise<void> {
     let {originalTransactionId, productId, renewalEnabled, autoRenewProductId} =
@@ -518,7 +554,7 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   private async handleChangeRenewalStatus(
-    serviceName: string,
+    serviceName: TServiceKey,
     renewalInfo: ChangeRenewalStatusAction,
   ): Promise<void> {
     let {originalTransactionId, renewalEnabled} = renewalInfo;
@@ -534,57 +570,27 @@ export class Paying<TPayingService extends IPayingService> {
   }
 
   private async handleRenewal(
-    serviceName: string,
+    serviceName: TServiceKey,
     info: SubscriptionRenewalAction,
   ): Promise<void> {
-    let {
-      transactionId,
-      originalTransactionId,
-      product,
-      purchasedAt,
-      expiresAt,
-      startsAt,
-    } = info;
+    let now = Date.now() as Timestamp;
+    let {transactionId, originalTransactionId, product, purchasedAt, duration} =
+      info;
 
+    let originalTransaction = await this.repository.requireOriginalTransaction(
+      serviceName,
+      originalTransactionId,
+    );
+
+    let nextStartsAt =
+      originalTransaction.expiresAt ?? (Date.now() as Timestamp);
     let transaction = await this.repository.getTransactionById(
       serviceName,
       transactionId,
     );
 
-    if (transaction) {
-      if (transaction.type !== 'subscription') {
-        throw new Error(`Transaction ${transactionId} is not a subscription.`);
-      }
-
-      await this.repository.collectionOfType('transaction').updateOne(
-        {
-          _id: transactionId,
-          type: 'subscription',
-        },
-        {
-          $set: {
-            product: product.id,
-            purchasedAt,
-            startsAt,
-            // TODO: 确认一下
-            duration: expiresAt - startsAt,
-          },
-        },
-      );
-    } else {
-      let originalTransaction =
-        await this.repository.getOriginalTransactionById(
-          serviceName,
-          originalTransactionId,
-        );
-
-      if (!originalTransaction) {
-        throw new Error(
-          `Original transaction ${originalTransactionId} for service [${serviceName}] not found`,
-        );
-      }
-
-      await this.repository.collectionOfType('transaction').insertOne({
+    if (!transaction) {
+      let transaction: TransactionDocument = {
         _id: transactionId,
         service: serviceName,
         type: 'subscription',
@@ -592,23 +598,33 @@ export class Paying<TPayingService extends IPayingService> {
         paymentExpiresAt: undefined,
         purchasedAt,
         originalTransactionId,
-        startsAt,
-        completedAt: purchasedAt,
+        startsAt: nextStartsAt,
+        completedAt: undefined,
         productGroup: product.group,
         canceledAt: undefined,
-        createdAt: purchasedAt,
+        createdAt: now,
         cancelReason: undefined,
         user: originalTransaction.user,
-        // TODO: 确认一下
-        duration: expiresAt - startsAt,
+        // TODO: 确认一下，支付宝可能要 28内 才能续费
+        duration,
         failedAt: undefined,
         // TODO: save raw info from apple
         raw: undefined,
-      });
+      };
+
+      await this.repository
+        .collectionOfType('transaction')
+        .insertOne(transaction);
     }
+
+    await this.handlePaymentConfirmed(serviceName, {
+      type: 'payment-confirmed',
+      transactionId,
+      purchasedAt,
+    });
   }
 
-  private requireService(serviceName: string): IPayingService {
+  private requireService(serviceName: TServiceKey): IPayingService {
     const service = this.services[serviceName];
 
     if (!service) {
@@ -618,39 +634,176 @@ export class Paying<TPayingService extends IPayingService> {
     return service;
   }
 
-  private async createSubscription(
-    serviceName: string,
-    product: InferProduct<TPayingService>,
+  private async syncTransaction(
+    serviceName: TServiceKey,
     userId: UserId,
+    {
+      product,
+      transactionId,
+      purchasedAt,
+    }: PurchaseReceipt<InferProduct<TPayingService>>,
+  ): Promise<void> {
+    let now = Date.now() as Timestamp;
+
+    let transaction = await this.repository.getTransactionById(
+      serviceName,
+      transactionId,
+    );
+
+    if (transaction) {
+      return;
+    }
+
+    let transactionDoc: TransactionDocument = {
+      _id: transactionId,
+      service: serviceName,
+      type: 'purchase',
+      paymentExpiresAt: undefined,
+      purchasedAt,
+      product: product.id,
+      productGroup: product.group,
+      cancelReason: undefined,
+      canceledAt: undefined,
+      createdAt: now,
+      completedAt: purchasedAt,
+      user: userId,
+      failedAt: undefined,
+      raw: undefined,
+    };
+
+    await this.repository.createTransaction(transactionDoc);
+  }
+
+  private async syncSubscription(
+    serviceName: TServiceKey,
+    userId: UserId,
+    {
+      originalTransactionId,
+      transactionId,
+      purchasedAt,
+      expiresAt,
+      subscribedAt,
+      product,
+      autoRenewal,
+      autoRenewalProduct,
+    }: SubscriptionReceipt<InferProduct<TPayingService>>,
+  ): Promise<void> {
+    let now = Date.now() as Timestamp;
+    let startsAt = purchasedAt;
+    let lastOriginalTransaction =
+      await this.repository.getOriginalTransactionById(
+        serviceName,
+        originalTransactionId,
+      );
+    let lastTransaction = await this.repository.getTransactionById(
+      serviceName,
+      transactionId,
+    );
+
+    if (lastOriginalTransaction) {
+      await this.repository.collectionOfType('original-transaction').updateOne(
+        {_id: originalTransactionId},
+        {
+          $set: {
+            product: product.id,
+            renewalProduct: autoRenewalProduct?.id,
+            productGroup: product.group,
+            expiresAt,
+            subscribedAt,
+            renewalEnabled: autoRenewal,
+            user: userId,
+            service: serviceName,
+          },
+        },
+      );
+    } else {
+      let originalTransactionDoc: OriginalTransactionDocument = {
+        _id: originalTransactionId,
+        // TODO: thirdPartyId for alipay
+        product: product.id,
+        renewalProduct: autoRenewalProduct?.id,
+        productGroup: product.group,
+        startsAt: undefined,
+        createdAt: now,
+        expiresAt,
+        subscribedAt,
+        canceledAt: undefined,
+        cancelReason: undefined,
+        renewalEnabled: autoRenewal,
+        lastFailedReason: undefined,
+        user: userId,
+        service: serviceName,
+        serviceExtra: undefined,
+      };
+
+      await this.repository.createOriginalTransaction(originalTransactionDoc);
+    }
+
+    if (lastTransaction) {
+      await this.repository.collectionOfType('transaction').updateOne(
+        {_id: transactionId},
+        {
+          $set: {
+            originalTransactionId,
+            startsAt,
+            duration: expiresAt - startsAt,
+            product: product.id,
+            productGroup: product.group,
+            user: userId,
+            purchasedAt,
+            completedAt: purchasedAt,
+            service: serviceName,
+          },
+        },
+      );
+    } else {
+      let transactionDoc: SubscriptionTransactionDocument = {
+        _id: transactionId,
+        originalTransactionId,
+        startsAt,
+        duration: expiresAt - startsAt,
+        product: product.id,
+        productGroup: product.group,
+        user: userId,
+        createdAt: now,
+        purchasedAt,
+        completedAt: purchasedAt,
+        canceledAt: undefined,
+        cancelReason: undefined,
+        paymentExpiresAt: undefined,
+        failedAt: undefined,
+        service: serviceName,
+        type: 'subscription',
+        raw: undefined,
+      };
+
+      await this.repository.createTransaction(transactionDoc);
+    }
+  }
+
+  private async createSubscription(
+    serviceName: TServiceKey,
+    {product, userId}: PrepareSubscriptionOptions<InferProduct<TPayingService>>,
+    lastSubscription?: Subscription,
   ): Promise<{
     subscription: Subscription;
-    // TODO: rename payload
-    response: Awaited<ReturnType<TPayingService['prepareSubscriptionData']>>;
+    response: unknown;
   }> {
     let service = this.requireService(serviceName);
     let now = new Date().getTime() as Timestamp;
 
-    let originalTransactionId = service.generateOriginalTransactionId();
-    let transactionId = service.generateTransactionId();
-
-    let startsAt = now;
+    let startsAt = Math.max(now, lastSubscription?.expiresAt ?? 0) as Timestamp;
 
     let subscriptionCreation: PayingServiceSubscriptionPrepareOptions = {
-      originalTransactionId,
-      transactionId,
       startsAt,
-      signedAt: undefined,
-      renewalEnabled: false,
       paymentExpiresAt: (now + this.config.purchaseExpiresAfter) as Timestamp,
       product,
       userId,
-      canceledAt: undefined,
     };
 
     // TODO: 支付宝的取整逻辑可能要在这里覆盖原有 duration
-    let {response, duration} = await service.prepareSubscriptionData(
-      subscriptionCreation,
-    );
+    let {response, duration, originalTransactionId, transactionId} =
+      await service.prepareSubscriptionData(subscriptionCreation);
 
     let originalTransactionDoc: OriginalTransactionDocument = {
       _id: originalTransactionId,
@@ -699,6 +852,6 @@ export class Paying<TPayingService extends IPayingService> {
       originalTransactionId,
     ))!;
 
-    return {subscription, response: response as any};
+    return {subscription, response};
   }
 }

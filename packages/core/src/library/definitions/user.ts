@@ -1,10 +1,20 @@
 import type {Subscription} from './original-transaction';
-import type {Timestamp, UserId} from './transaction';
+import type {
+  PurchaseTransaction,
+  SubscriptionTransaction,
+  Timestamp,
+  UserId,
+} from './transaction';
 
 export class User {
   private identifierToSubscriptionsMap: Map<string, Subscription[]>;
 
-  constructor(public id: UserId, public subscriptions: Subscription[]) {
+  constructor(
+    public id: UserId,
+    public subscriptions: Subscription[],
+    public subscriptionTransactions: SubscriptionTransaction[],
+    public purchaseTransactions: PurchaseTransaction[],
+  ) {
     this.identifierToSubscriptionsMap = this.subscriptions.reduce(
       (map, subscription) => {
         let subscriptions = map.get(subscription.productIdentifier);
@@ -34,16 +44,16 @@ export class User {
 
     subscriptions.sort((x, y) => x.startsAt! - y.startsAt!);
 
-    for (let transaction of subscriptions) {
-      if (transaction.startsAt! <= expiresAt) {
-        expiresAt += transaction.expiresAt! - transaction.startsAt!;
+    for (let subscription of subscriptions) {
+      if (subscription.startsAt! <= expiresAt) {
+        expiresAt += subscription.expiresAt! - subscription.startsAt!;
       } else {
-        if (transaction.startsAt! > now) {
+        if (subscription.startsAt! > now) {
           break;
         }
 
         // startsAt = transaction.startsAt!;
-        expiresAt = transaction.expiresAt!;
+        expiresAt = subscription.expiresAt!;
       }
     }
 

@@ -4,7 +4,7 @@ import type {Repository} from '../@repository';
 
 import type {
   ProductId,
-  SubscriptionTransactionDocument,
+  SubscriptionTransaction,
   Timestamp,
   UserId,
 } from './transaction';
@@ -16,7 +16,7 @@ export interface OriginalTransactionDocument {
   // 在有效期内的订阅
   product: ProductId;
   // 下一次订阅
-  renewalProduct: string;
+  renewalProduct: string | undefined;
   productGroup: string | undefined;
 
   createdAt: Timestamp;
@@ -60,7 +60,7 @@ export class Subscription {
     return this.originalTransaction.renewalEnabled;
   }
 
-  get status(): 'pending' | 'expired' | 'canceled' | 'active' | 'not-started' {
+  get status(): 'pending' | 'expired' | 'canceled' | 'active' | 'not-start' {
     if (this.originalTransaction.canceledAt) {
       return 'canceled';
     }
@@ -77,7 +77,7 @@ export class Subscription {
     }
 
     if (this.originalTransaction.startsAt > Date.now()) {
-      return 'not-started';
+      return 'not-start';
     }
 
     return 'active';
@@ -85,7 +85,7 @@ export class Subscription {
 
   constructor(
     public originalTransaction: OriginalTransactionDocument,
-    public transactions: SubscriptionTransactionDocument[],
+    public transactions: SubscriptionTransaction[],
     private repository: Repository,
   ) {}
 

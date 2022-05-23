@@ -15,8 +15,7 @@ export interface SubscriptionRenewalAction {
   type: 'subscription-renewal';
   transactionId: TransactionId;
   purchasedAt: Timestamp;
-  startsAt: Timestamp;
-  expiresAt: Timestamp;
+  duration: number;
   originalTransactionId: OriginalTransactionId;
   product: IProduct;
 }
@@ -40,6 +39,7 @@ export interface SubscribedAction {
   originalTransactionId: OriginalTransactionId;
   subscribedAt: Timestamp;
   extra?: any;
+  autoRenewalEnabled?: boolean;
 }
 
 export interface SubscriptionCanceledAction {
@@ -78,7 +78,6 @@ export interface SubscriptionReceipt<TProduct extends IProduct> {
 }
 
 export interface PurchaseReceipt<TProduct extends IProduct> {
-  quantity: number;
   product: TProduct;
   transactionId: TransactionId;
   purchasedAt: Timestamp;
@@ -96,6 +95,13 @@ export interface CancelSubscriptionOptions {
 export interface PrepareSubscriptionReturn {
   response: unknown;
   duration: number;
+  transactionId: TransactionId;
+  originalTransactionId: OriginalTransactionId;
+}
+
+export interface PreparePurchaseReturn {
+  response: unknown;
+  transactionId: TransactionId;
 }
 
 export type TransactionStatusCheckingResult =
@@ -109,8 +115,6 @@ export type SubscriptionStatusCheckingResult =
   | {type: 'pending'};
 
 export abstract class IPayingService<TProduct extends IProduct = IProduct> {
-  __productType: TProduct = undefined as any;
-
   productIdToProductMap: Map<ProductId, TProduct>;
 
   constructor(public products: TProduct[]) {
@@ -119,17 +123,12 @@ export abstract class IPayingService<TProduct extends IProduct = IProduct> {
     );
   }
 
-  abstract generateTransactionId(): TransactionId;
-  abstract generateOriginalTransactionId(): OriginalTransactionId;
-
   abstract prepareSubscriptionData(
     options: PayingServiceSubscriptionPrepareOptions<TProduct>,
   ): Promise<PrepareSubscriptionReturn>;
   abstract preparePurchaseData(
     options: PurchaseCreation<TProduct>,
-  ): Promise<unknown>;
-  // preparePurchase(options: SubscriptionCreation): Promise<void>;
-  // submitPurchase(options: SubscriptionCreation): Promise<void>;
+  ): Promise<PreparePurchaseReturn>;
   abstract parseReceipt(receipt: unknown): Promise<ApplyingReceipt<TProduct>>;
   abstract parseCallback(callback: unknown): Promise<Action | undefined>;
 
@@ -177,19 +176,13 @@ export interface IProduct {
 export interface PayingServiceSubscriptionPrepareOptions<
   TProduct extends IProduct = IProduct,
 > {
-  originalTransactionId: OriginalTransactionId;
-  transactionId: TransactionId;
   startsAt: Timestamp;
-  signedAt: Timestamp | undefined;
-  renewalEnabled: boolean;
   product: TProduct;
   paymentExpiresAt: Timestamp;
   userId: UserId;
-  canceledAt: Timestamp | undefined;
 }
 
 export interface PurchaseCreation<TProduct extends IProduct = IProduct> {
-  transactionId: TransactionId;
   product: TProduct;
   paymentExpiresAt: Timestamp;
   userId: UserId;

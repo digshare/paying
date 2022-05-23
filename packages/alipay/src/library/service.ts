@@ -7,6 +7,7 @@ import type {
   OriginalTransactionId,
   PayingServiceSubscriptionPrepareOptions,
   PaymentConfirmedAction,
+  PreparePurchaseReturn,
   PrepareSubscriptionReturn,
   PurchaseCreation,
   SubscribedAction,
@@ -17,7 +18,7 @@ import type {
 } from '@paying/core';
 import {IPayingService} from '@paying/core';
 import type {AlipaySdkCommonResult, AlipaySdkConfig} from 'alipay-sdk';
-import {format} from 'date-fns';
+import {addDays, format, startOfMonth} from 'date-fns';
 import ms from 'ms';
 import {v4 as uuid} from 'uuid';
 
@@ -80,8 +81,9 @@ export class AlipayService extends IPayingService<AlipayProduct> {
 
   async preparePurchaseData(
     options: PurchaseCreation<AlipayProduct>,
-  ): Promise<{response: string; duration: number}> {
-    let {product, transactionId} = options;
+  ): Promise<PreparePurchaseReturn> {
+    let {product} = options;
+    let transactionId = this.generateTransactionId();
 
     let orderInfo = this.alipay.sign('alipay.trade.app.pay', {
       notify_url: this.config.paidCallbackURL,
@@ -93,22 +95,33 @@ export class AlipayService extends IPayingService<AlipayProduct> {
       },
     });
 
-    return {response: orderInfo, duration: this.getDuration(product)};
+    return {response: orderInfo, transactionId};
   }
 
   async prepareSubscriptionData(
     creation: PayingServiceSubscriptionPrepareOptions<AlipayProduct>,
   ): Promise<PrepareSubscriptionReturn> {
-    // let duration = this.getDuration(creation.product);
+    let msDuration = this.getDuration(creation.product);
 
     let {
-      transactionId,
-      originalTransactionId,
       paymentExpiresAt,
       userId,
       startsAt,
       product: {amount, subject, unit, duration, maxAmount},
     } = creation;
+
+    let transactionId = this.generateTransactionId();
+    let originalTransactionId = this.generateOriginalTransactionId();
+
+    let nextExpiresAt = (startsAt + msDuration) as Timestamp;
+
+    if (new Date(nextExpiresAt).getDay() > 28) {
+      nextExpiresAt = startOfMonth(
+        addDays(nextExpiresAt, 4),
+      ).getTime() as Timestamp;
+    }
+
+    let correctedDuration = nextExpiresAt - startsAt;
 
     let bizContent = {
       // timeout_express: '10m', // 该笔订单允许的最晚付款时间，逾期将关闭交易。取值范围：1m～15d,, 1.5h，可转换为 90m。
@@ -144,7 +157,7 @@ export class AlipayService extends IPayingService<AlipayProduct> {
           period: duration,
           // alipay-test: 测试阿里自动扣费用
           // execute_time: format(testAt, 'yyyy-MM-dd'),
-          execute_time: format(startsAt + duration, 'yyyy-MM-dd'), // 下次付款时间，扣款可提前五天扣
+          execute_time: nextExpiresAt, // 下次付款时间，扣款可提前五天扣
           single_amount: maxAmount, // 单次扣款最大金额single_amount是周期扣款产品必填，即每次发起扣款时限制的最大金额，单位为元。商户每次发起扣款都不允许大于此金额。
           // total_amount: 10000, // 总金额限制，单位为元。如果传入此参数，商户多次扣款的累计金额不允许超过此金额。
           // total_payments: 10, // 总扣款次数。如果传入此参数，则商户成功扣款的次数不能超过此次数限制（扣款失败不计入）。
@@ -153,11 +166,13 @@ export class AlipayService extends IPayingService<AlipayProduct> {
     };
 
     return {
+      originalTransactionId,
+      transactionId,
       response: this.alipay.sign('alipay.trade.app.pay', {
         notify_url: this.config.paidCallbackURL,
         bizContent,
       }),
-      duration,
+      duration: correctedDuration,
     };
   }
 
@@ -169,7 +184,6 @@ export class AlipayService extends IPayingService<AlipayProduct> {
       .agreementNo;
     let transactionId = this.generateTransactionId();
     let product = this.requireProduct(originalTransaction.product);
-    let startsAt = originalTransaction.expiresAt ?? (Date.now() as Timestamp);
 
     let result = (await this.alipay.sdk.exec('alipay.trade.pay', {
       bizContent: {
@@ -192,8 +206,7 @@ export class AlipayService extends IPayingService<AlipayProduct> {
         type: 'subscription-renewal',
         transactionId,
         product,
-        startsAt,
-        expiresAt: (startsAt + this.getDuration(product)) as Timestamp,
+        duration: this.getDuration(product),
         originalTransactionId: originalTransaction._id,
         purchasedAt,
       };

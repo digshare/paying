@@ -1,7 +1,8 @@
-import type {Collection, Db} from 'mongodb';
 import {MongoClient} from 'mongodb';
+import type {Collection, Db} from 'mongodb';
 
 import type {
+  AbstractTransaction,
   OriginalTransactionDocument,
   OriginalTransactionId,
   ProductId,
@@ -10,12 +11,19 @@ import type {
   TransactionId,
   UserId,
 } from './definitions';
-import {Subscription, User} from './definitions';
+import {
+  PurchaseTransaction,
+  Subscription,
+  SubscriptionTransaction,
+  User,
+} from './definitions';
 
-export interface RepositoryConfig {
-  url: string;
-  dbName: string;
-}
+export type RepositoryConfig = (
+  | {
+      mongoClient: MongoClient;
+    }
+  | {url: string}
+) & {dbName: string};
 
 interface Collections {
   transaction: TransactionDocument | SubscriptionTransactionDocument;
@@ -30,9 +38,16 @@ const COLLECTION_NAME_DICT: {[TName in keyof Collections]: string} = {
 export class Repository {
   private db: Db;
 
-  constructor(private config: RepositoryConfig) {
-    let client = new MongoClient(config.url);
+  ready: Promise<void>;
+
+  constructor(config: RepositoryConfig) {
+    let client =
+      'mongoClient' in config
+        ? config.mongoClient
+        : new MongoClient(config.url, {ignoreUndefined: true});
+
     this.db = client.db(config.dbName);
+    this.ready = client.connect().then();
   }
 
   async createTransaction(transaction: TransactionDocument): Promise<void> {
@@ -56,21 +71,55 @@ export class Repository {
       })
       .toArray();
 
+    let transactionsDocs = await this.collectionOfType('transaction')
+      .find({user: userId})
+      .toArray();
+
+    let purchaseTransactions: PurchaseTransaction[] = [];
+    let originalIdToTransactionMap: Map<
+      OriginalTransactionId,
+      SubscriptionTransaction[]
+    > = new Map();
+
+    for (const transactionDoc of transactionsDocs) {
+      if (transactionDoc.type === 'purchase') {
+        purchaseTransactions.push(new PurchaseTransaction(transactionDoc));
+      } else if (transactionDoc.type === 'subscription') {
+        let subscriptionTransactions = originalIdToTransactionMap.get(
+          transactionDoc.originalTransactionId,
+        );
+        let subscriptionTransaction = new SubscriptionTransaction(
+          transactionDoc,
+        );
+
+        if (subscriptionTransactions) {
+          subscriptionTransactions.push(subscriptionTransaction);
+        } else {
+          originalIdToTransactionMap.set(transactionDoc.originalTransactionId, [
+            subscriptionTransaction,
+          ]);
+        }
+      }
+    }
+
     let subscriptions: Subscription[] = [];
 
     for (const originalTransaction of originalTransactions) {
       subscriptions.push(
         new Subscription(
           originalTransaction,
-          await this.getSubscriptionTransactionsByOriginalTransactionId(
-            originalTransaction._id,
-          ),
+          originalIdToTransactionMap.get(originalTransaction._id) ?? [],
           this,
         ),
       );
     }
 
-    return new User(userId, subscriptions);
+    return new User(
+      userId,
+      subscriptions,
+      Array.from(originalIdToTransactionMap.values()).flat(),
+      purchaseTransactions,
+    );
   }
 
   async getSubscriptionById(
@@ -133,26 +182,29 @@ export class Repository {
       return undefined;
     }
 
-    let transactions = (await this.collectionOfType('transaction')
-      .find({
-        originalTransactionId: originalTransaction._id,
-      })
-      .sort({createdAt: -1})
-      .toArray()) as SubscriptionTransactionDocument[];
+    let transactions =
+      await this.getSubscriptionTransactionsByOriginalTransactionId(
+        originalTransaction._id,
+      );
 
     return new Subscription(originalTransaction, transactions, this);
   }
 
   async getSubscriptionTransactionsByOriginalTransactionId(
     id: OriginalTransactionId,
-  ): Promise<SubscriptionTransactionDocument[]> {
-    return (await this.collectionOfType('transaction')
-      .find({
-        originalTransactionId: id,
-        type: 'subscription',
-      })
-      .sort({createdAt: -1})
-      .toArray()) as SubscriptionTransactionDocument[];
+  ): Promise<SubscriptionTransaction[]> {
+    return (
+      await this.collectionOfType('transaction')
+        .find({
+          originalTransactionId: id,
+          type: 'subscription',
+        })
+        .sort({createdAt: -1})
+        .toArray()
+    ).map(
+      doc =>
+        new SubscriptionTransaction(doc as SubscriptionTransactionDocument),
+    );
   }
 
   async getTransactionById(
@@ -177,6 +229,25 @@ export class Repository {
     });
 
     return doc ?? undefined;
+  }
+
+  async requireOriginalTransaction(
+    serviceName: string,
+    id: OriginalTransactionId,
+  ): Promise<OriginalTransactionDocument> {
+    let doc = await this.getOriginalTransactionById(serviceName, id);
+
+    if (!doc) {
+      throw new Error(`Original transaction ${id} not found`);
+    }
+
+    return doc;
+  }
+
+  buildTransactionFromDoc(doc: TransactionDocument): AbstractTransaction {
+    return doc.type === 'purchase'
+      ? new PurchaseTransaction(doc)
+      : new SubscriptionTransaction(doc);
   }
 
   collectionOfType<TType extends keyof Collections>(

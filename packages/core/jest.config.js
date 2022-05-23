@@ -8,6 +8,7 @@ module.exports = {
       diagnostics: {
         ignoreCodes: ['TS151001'],
       },
+      tsconfig: '<rootDir>/src/test/tsconfig.json',
     },
   },
 };

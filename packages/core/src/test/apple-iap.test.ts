@@ -38,6 +38,8 @@
 //   ],
 // };
 
+test('placeholder', () => {});
+
 // test('should handle Apple IAP receipt', async () => {
 //   let b64Input!: string;
 //   let userId = '123';
