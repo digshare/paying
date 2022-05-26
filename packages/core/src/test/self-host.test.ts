@@ -1,16 +1,16 @@
 import {assertScriptsCompleted, call, createBlackObject, x} from 'black-object';
 import _ from 'lodash';
-import {MongoClient} from 'mongodb';
 import ms from 'ms';
-import {v4 as uuid} from 'uuid';
 
-import type {
-  IPayingService,
-  IProduct,
-  OriginalTransactionId,
-  TransactionId,
-} from '../library';
+import type {IPayingService, IProduct} from '../library';
 import {Paying, ProductId, Timestamp, UserId} from '../library';
+
+import {
+  dbName,
+  generateOriginalTransactionId,
+  generateTransactionId,
+  mongoClient,
+} from './@common';
 
 let GROUP_PRODUCTS: Record<
   'monthly' | 'yearly',
@@ -36,11 +36,6 @@ let PURCHASE_PRODUCTS: Record<'product-a' | 'product-b', IProduct> = {
     id: 'product-b' as ProductId,
   },
 };
-
-let mongoClient = new MongoClient('mongodb://localhost:27017', {
-  ignoreUndefined: true,
-});
-const dbName = 'paying-test';
 
 test('should subscribed', async () => {
   let duration = ms('30d');
@@ -778,11 +773,3 @@ beforeAll(async () => {
 afterAll(async () => {
   await mongoClient.close();
 });
-
-function generateTransactionId(): TransactionId {
-  return uuid() as TransactionId;
-}
-
-function generateOriginalTransactionId(): OriginalTransactionId {
-  return uuid() as OriginalTransactionId;
-}

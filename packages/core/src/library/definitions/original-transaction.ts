@@ -1,6 +1,6 @@
 import type {Nominal} from 'tslang';
 
-import type {Repository} from '../@repository';
+import type {Repository} from '../repository';
 
 import type {
   ProductId,

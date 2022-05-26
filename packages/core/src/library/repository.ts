@@ -35,6 +35,8 @@ const COLLECTION_NAME_DICT: {[TName in keyof Collections]: string} = {
   transaction: 'paying-transaction',
 };
 
+export interface IRepository extends Repository {}
+
 export class Repository {
   private db: Db;
 

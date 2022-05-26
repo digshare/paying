@@ -1,5 +1,3 @@
-import type {RepositoryConfig} from './@repository';
-import {Repository} from './@repository';
 import type {
   AbstractTransaction,
   Action,
@@ -27,6 +25,8 @@ import type {
   UserId,
 } from './definitions';
 import {SubscriptionTransaction} from './definitions';
+import type {RepositoryConfig} from './repository';
+import {Repository} from './repository';
 
 interface PayingConfig {
   repository: RepositoryConfig;
@@ -55,7 +55,6 @@ export class Paying<
 > {
   ready: Promise<void>;
 
-  private repository: Repository;
   private actionHandler: ActionToHandler<TServiceKey> = {
     subscribed: this.handleSubscribed.bind(this),
     'payment-confirmed': this.handlePaymentConfirmed.bind(this),
@@ -69,9 +68,8 @@ export class Paying<
   constructor(
     readonly services: Record<TServiceKey, IPayingService>,
     public config: PayingConfig,
+    private repository: Repository = new Repository(config.repository),
   ) {
-    this.repository = new Repository(config.repository);
-
     this.ready = this.repository.ready;
   }
 
@@ -215,7 +213,7 @@ export class Paying<
     serviceName: TServiceKey,
     onError?: (error: unknown) => void,
   ): Promise<void> {
-    let pendingTransactions = await this.repository
+    let pendingTransactions = this.repository
       .collectionOfType('transaction')
       .find({
         completedAt: {$exists: false},
@@ -508,18 +506,17 @@ export class Paying<
 
     let startsAt = originalTransactionDoc.startsAt ?? transactionDoc.startsAt;
 
-    let lastExpiresAt =
-      originalTransactionDoc.expiresAt ?? transactionDoc.startsAt;
-
-    if (lastExpiresAt !== transactionDoc.startsAt) {
-      throw new Error(
-        `Subscription should be continuous, ${lastExpiresAt} ${transactionDoc.startsAt}`,
-      );
-    }
+    let nextStartsAt = transactionDoc.startsAt;
 
     // TODO: 续费
     // 当有赠送时，支付宝是否要延迟续费
-    let expiresAt = (transactionDoc.duration + lastExpiresAt) as Timestamp;
+    let expiresAt = (transactionDoc.duration + nextStartsAt) as Timestamp;
+
+    if (expiresAt < (originalTransactionDoc.expiresAt ?? 0)) {
+      throw new Error(
+        `Incoming expiresAt ${expiresAt} should be later than current ${originalTransactionDoc.expiresAt}`,
+      );
+    }
 
     await this.repository.collectionOfType('original-transaction').updateOne(
       {
@@ -582,8 +579,10 @@ export class Paying<
       originalTransactionId,
     );
 
-    let nextStartsAt =
-      originalTransaction.expiresAt ?? (Date.now() as Timestamp);
+    let nextStartsAt = Math.max(
+      originalTransaction.expiresAt ?? 0,
+      Date.now(),
+    ) as Timestamp;
     let transaction = await this.repository.getTransactionById(
       serviceName,
       transactionId,
