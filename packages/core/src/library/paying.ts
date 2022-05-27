@@ -6,6 +6,7 @@ import type {
   IPayingService,
   IProduct,
   OriginalTransactionDocument,
+  OriginalTransactionId,
   PayingServiceSubscriptionPrepareOptions,
   PaymentConfirmedAction,
   PurchaseCreation,
@@ -13,7 +14,6 @@ import type {
   PurchaseTransactionDocument,
   RechargeFailed,
   SubscribedAction,
-  Subscription,
   SubscriptionCanceledAction,
   SubscriptionReceipt,
   SubscriptionRenewalAction,
@@ -24,12 +24,12 @@ import type {
   User,
   UserId,
 } from './definitions';
-import {SubscriptionTransaction} from './definitions';
+import {Subscription, SubscriptionTransaction} from './definitions';
 import type {RepositoryConfig} from './repository';
 import {Repository} from './repository';
 
 interface PayingConfig {
-  repository: RepositoryConfig;
+  repository: RepositoryConfig | Repository;
   purchaseExpiresAfter: number;
   renewalBefore: number;
 }
@@ -53,6 +53,7 @@ export class Paying<
   TPayingService extends IPayingService,
   TServiceKey extends string,
 > {
+  private repository: Repository;
   ready: Promise<void>;
 
   private actionHandler: ActionToHandler<TServiceKey> = {
@@ -68,8 +69,13 @@ export class Paying<
   constructor(
     readonly services: Record<TServiceKey, IPayingService>,
     public config: PayingConfig,
-    private repository: Repository = new Repository(config.repository),
   ) {
+    if ('database' in config.repository) {
+      this.repository = new Repository(config.repository);
+    } else {
+      this.repository = config.repository;
+    }
+
     this.ready = this.repository.ready;
   }
 
@@ -107,6 +113,13 @@ export class Paying<
     let doc = await this.repository.getTransactionById(serviceName, id);
 
     return doc && this.repository.buildTransactionFromDoc(doc);
+  }
+
+  async getSubscription(
+    serviceName: TServiceKey,
+    id: OriginalTransactionId,
+  ): Promise<Subscription | undefined> {
+    return this.repository.getSubscriptionById(serviceName, id);
   }
 
   async preparePurchase(
@@ -189,9 +202,25 @@ export class Paying<
 
   async cancelSubscription(
     serviceName: TServiceKey,
-    subscription: Subscription,
-  ): Promise<void> {
+    subscriptionOrId: OriginalTransactionId | Subscription,
+  ): Promise<boolean> {
     let service = this.requireService(serviceName);
+    let subscription =
+      subscriptionOrId instanceof Subscription
+        ? subscriptionOrId
+        : await this.repository.getSubscriptionById(
+            serviceName,
+            subscriptionOrId,
+          );
+
+    if (!subscription) {
+      throw new Error(`Subscription not found: ${subscriptionOrId}`);
+    }
+
+    if (subscription.status === 'canceled') {
+      return true;
+    }
+
     let canceled = await service.cancelSubscription({subscription});
 
     if (canceled) {
@@ -202,11 +231,9 @@ export class Paying<
       });
     }
 
-    await subscription.refresh();
+    subscription = await subscription.refresh();
 
-    if (subscription.status !== 'canceled') {
-      throw new Error('Subscription cancellation failed.');
-    }
+    return subscription.status === 'canceled';
   }
 
   async checkTransactions(
@@ -226,7 +253,7 @@ export class Paying<
       let transaction = (await pendingTransactions.next())!;
 
       try {
-        await this.checkTransaction(
+        await this._checkTransaction(
           serviceName,
           this.repository.buildTransactionFromDoc(transaction),
         );
@@ -319,6 +346,15 @@ export class Paying<
     }
   }
 
+  async checkTransaction(
+    serviceName: TServiceKey,
+    id: TransactionId,
+  ): Promise<void> {
+    let transaction = await this.repository.requireTransaction(serviceName, id);
+
+    await this._checkTransaction(serviceName, transaction);
+  }
+
   private async applyAction(
     serviceName: TServiceKey,
     action: Action,
@@ -365,7 +401,7 @@ export class Paying<
     );
   }
 
-  private async checkTransaction(
+  private async _checkTransaction(
     serviceName: TServiceKey,
     transaction: AbstractTransaction,
   ): Promise<void> {

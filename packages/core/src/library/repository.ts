@@ -23,7 +23,7 @@ export type RepositoryConfig = (
       mongoClient: MongoClient;
     }
   | {url: string}
-) & {dbName: string};
+) & {database: string};
 
 interface Collections {
   transaction: TransactionDocument | SubscriptionTransactionDocument;
@@ -48,7 +48,7 @@ export class Repository {
         ? config.mongoClient
         : new MongoClient(config.url, {ignoreUndefined: true});
 
-    this.db = client.db(config.dbName);
+    this.db = client.db(config.database);
     this.ready = client.connect().then();
   }
 
@@ -244,6 +244,19 @@ export class Repository {
     }
 
     return doc;
+  }
+
+  async requireTransaction(
+    serviceName: string,
+    id: TransactionId,
+  ): Promise<AbstractTransaction> {
+    let doc = await this.getTransactionById(serviceName, id);
+
+    if (!doc) {
+      throw new Error(`Transaction ${id} not found`);
+    }
+
+    return this.buildTransactionFromDoc(doc);
   }
 
   buildTransactionFromDoc(doc: TransactionDocument): AbstractTransaction {

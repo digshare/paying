@@ -1,6 +1,7 @@
 import type {Nominal} from 'tslang';
 
 import type {Repository} from '../repository';
+import {maxBy} from '../utils';
 
 import type {
   ProductId,
@@ -81,6 +82,10 @@ export class Subscription {
     }
 
     return 'active';
+  }
+
+  get latestTransaction(): SubscriptionTransaction | undefined {
+    return maxBy(this.transactions, transaction => transaction.createdAt);
   }
 
   constructor(

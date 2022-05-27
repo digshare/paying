@@ -102,6 +102,10 @@ export class SubscriptionTransaction extends AbstractTransaction {
     return this.doc.completedAt;
   }
 
+  get createdAt(): Timestamp {
+    return this.doc.createdAt;
+  }
+
   constructor(public override doc: SubscriptionTransactionDocument) {
     super(doc);
   }

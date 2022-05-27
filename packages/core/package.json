@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build": "tsc --project src/library/tsconfig.json",
-    "jest-watch": "jest --watchAll --coverage"
+    "jest-watch": "jest --watchAll --coverage",
+    "jest": "jest --coverage"
   },
   "dependencies": {
     "mongodb": "^4.5.0",

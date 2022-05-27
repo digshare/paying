@@ -26,12 +26,7 @@ import {
   UserId,
 } from '../library';
 
-import {
-  dbName,
-  generateOriginalTransactionId,
-  generateTransactionId,
-  mongoClient,
-} from './@common';
+import {generateOriginalTransactionId, generateTransactionId} from './@common';
 
 const GROUP_PRODUCTS: Record<
   'monthly' | 'yearly',
@@ -179,12 +174,8 @@ test('should prepare subscription', async () => {
     {
       purchaseExpiresAfter: PURCHASE_EXPIRES_AFTER,
       renewalBefore: RENEW_BEFORE,
-      repository: {
-        dbName,
-        mongoClient,
-      },
+      repository,
     },
-    repository,
   );
 
   let {subscription} = await paying.prepareSubscription(SERVICE_NAME, {
@@ -325,12 +316,8 @@ test('should confirm subscription', async () => {
     {
       purchaseExpiresAfter: PURCHASE_EXPIRES_AFTER,
       renewalBefore: RENEW_BEFORE,
-      repository: {
-        dbName,
-        mongoClient,
-      },
+      repository,
     },
-    repository,
   );
 
   await paying.handleCallback(SERVICE_NAME, {});
@@ -544,12 +531,8 @@ test('should renewal subscription', async () => {
     {
       purchaseExpiresAfter: PURCHASE_EXPIRES_AFTER,
       renewalBefore: RENEW_BEFORE,
-      repository: {
-        dbName,
-        mongoClient,
-      },
+      repository,
     },
-    repository,
   );
 
   await paying.checkSubscriptionRenewal(SERVICE_NAME, error => {
@@ -674,12 +657,8 @@ test('should cancel expired transaction', async () => {
     {
       purchaseExpiresAfter: PURCHASE_EXPIRES_AFTER,
       renewalBefore: RENEW_BEFORE,
-      repository: {
-        dbName,
-        mongoClient,
-      },
+      repository,
     },
-    repository,
   );
 
   await paying.checkTransactions(SERVICE_NAME, error => {
@@ -884,12 +863,8 @@ test('should renew failed', async () => {
     {
       purchaseExpiresAfter: PURCHASE_EXPIRES_AFTER,
       renewalBefore: RENEW_BEFORE,
-      repository: {
-        dbName,
-        mongoClient,
-      },
+      repository,
     },
-    repository,
   );
 
   await paying.checkSubscriptionRenewal(SERVICE_NAME, error => {

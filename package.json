@@ -2,12 +2,13 @@
   "name": "paying",
   "private": true,
   "license": "MIT",
-  "author": "enverse",
+  "author": "Chengdu Enverse Co., Ltd.",
   "scripts": {
     "build": "rimraf packages/*/{.bld-cache,bld} && tsc --build",
     "lint": "run-in-every eslint-project --parallel --echo -- eslint --config {configFileName} .",
     "lint-prettier": "prettier --check .",
-    "test": "yarn lint-prettier && yarn build && yarn lint",
+    "test": "yarn lint-prettier && yarn build && yarn lint && jest",
+    "jest": "yarn core jest",
     "core": "yarn workspace @paying/core"
   },
   "workspaces": [

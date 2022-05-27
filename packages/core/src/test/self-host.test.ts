@@ -107,7 +107,7 @@ test('should subscribed', async () => {
       renewalBefore: ms('5d'),
       repository: {
         mongoClient,
-        dbName,
+        database: dbName,
       },
     },
   );
@@ -190,7 +190,7 @@ test('expired transaction should be canceled', async () => {
       renewalBefore: ms('5d'),
       repository: {
         mongoClient,
-        dbName,
+        database: dbName,
       },
     },
   );
@@ -331,7 +331,7 @@ test('should renew', async () => {
       renewalBefore: ms('5d'),
       repository: {
         mongoClient,
-        dbName,
+        database: dbName,
       },
     },
   );
@@ -491,7 +491,7 @@ test('should change subscription', async () => {
       renewalBefore: ms('5d'),
       repository: {
         mongoClient,
-        dbName,
+        database: dbName,
       },
     },
   );
@@ -615,7 +615,7 @@ test('should subscription be canceled', async () => {
       renewalBefore: ms('5d'),
       repository: {
         mongoClient,
-        dbName,
+        database: dbName,
       },
     },
   );
@@ -720,7 +720,7 @@ test('should purchase', async () => {
       renewalBefore: ms('5d'),
       repository: {
         mongoClient,
-        dbName,
+        database: dbName,
       },
     },
   );

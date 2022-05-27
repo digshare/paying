@@ -1,203 +1,155 @@
-# paying
+# Paying
 
-Just another awesome magic.
+A Node.js module for subscription and purchase processing.
 
-## License
+# Installation
 
-MIT License.
+```bash
+yarn add paying
+# or
+npm install paying
+```
 
-## 使用
+# Requirements
+
+- MongoDB
+- Node.js
+
+# Usage
+
+## Initialization
 
 ```ts
-const paying = new Paying({
-  services: {
+const paying = new Paying(
+  {
+    // every different payment method has its own configuration
+    // check the service's documentation for more information
     alipay: new AlipayService(),
     'apple-iap': new AppleIAPService(),
   },
-});
-```
-
-```ts
-const user = paying.user(userId);
-
-const subscription = await user.findSubscription('premium');
-
-// subscription.active;
-// subscription.expiresAt;
-
-const subscriptions = await user.getSubscriptions();
-```
-
-苹果订阅
-
-```ts
-const user = paying.user(userId);
-
-// const result = await appleIAPService.resolveReceipt(receipt);
-
-await user.submitReceipt('apple-iap', receipt);
-
-// if (result.type === 'subscription') {
-//   // const subscription = await user.prepareSubscription({
-//   // });
-
-//   // await subscription.submit();
-
-//   // await user.submitSubscription({
-//   //   name: 'premium',
-//   //   service: 'apple-iap',
-//   //   extend(origin) {
-//   //     return addMonths(origin, 1);
-//   //   },
-//   // });
-// } else if (result.type === 'payment') {
-//   // const payment = await user.preparePayment({
-//   //   product: result.product,
-//   //   amount: result.amount,
-//   // });
-
-//   // await payment.submit();
-// }
-```
-
-支付宝订阅
-
-```ts
-const user = paying.user(userId);
-
-const subscription = await user.prepareSubscription({
-  name: 'premium',
-  service: 'alipay',
-  extend(origin) {
-    return addMonths(origin, 1);
-  },
-});
-
-// 创建订单，用户支付，回调
-
-await subscription.submit(data);
-```
-
-支付宝付款
-
-```ts
-const user = paying.user(userId);
-
-const payment = await user.preparePayment({
-  product: '<product-id>',
-  amount: '15.00',
-});
-
-await payment.submit(data);
-```
-
-```typescript
-// 创建 store
-let alipayStore = new Store(
-  new AlipayAdapter({
-    appId: 'app-id',
-    privateKey: 'xxx',
-    publicKey: 'yyy',
-    callbackURL: 'https://example.com/callback',
-  }),
-  {purchaseExpires: 3000},
+  {repository: {url: 'mongodb://localhost:27017', database: 'paying-db'}},
 );
-
-let appleStore = new Store(AppleAdapter, {
-  appId: 'app-id',
-  privateKey: 'xxx',
-});
 ```
 
-## 支付宝订阅
+## Managed service
 
-1. 创建或更新订阅, 当 product.group 和用户当前订阅的 group 相同时, 会更新订阅
+> "Managed service" means the data is managed by the paying service provider. like Apple IAP, Google Play, etc.
 
-```typescript
-let {subscription, payload} = alipayStore.createOrUpdateSubscription({
-  product,
-  user,
-});
-// subscription.status === 'pending'
-```
+> When you are using a managed service, all the data is synced from the service provider. so the operations like: renewal, cancellation, change subscription plan. are all managed by the service provider. and you can't do these operations programmatically.
 
-2. 返回 payload 给客户端，调起支付宝付款
-3. 支付宝回调, 更新订阅状态，或是已经被定时任务更新了
+- Handle receipt
 
-```typescript
-let subscription = alipayStore.handleNotification(data);
-// subscription.status === 'active' || subscription.status === 'canceled'
-// subscription.expiresAt === "2020-01-01T00:00:00.000Z"
-```
+  ```ts
+  await paying.handleReceipt("apple-iap", userId, <received-receipt>);
 
-4. 取消订阅
+  let user = paying.user(userId);
+  // if receipt is valid, and contains a active subscription:
 
-```typescript
-store.cancelSubscription(subscription);
-```
+  console.log(user.subscriptions[0].isActive); // true
+  ```
 
-## 支付宝购买
+- Handle callback
 
-1. 购买
+  ```ts
+  router('/apple/callback', req => {
+    await paying.handleCallback('apple-iap', req);
+  });
+  ```
 
-```typescript
-let {transaction, payload} = alipayStore.createPurchase(product);
-```
+## Unmanaged service
 
-2. 返回 payload 给客户端，调起支付宝付款
+> Opposite with managed service. The data and subscription is managed by yourself, like Alipay or something else. you can send a renewal or cancellation request to the paying service provider programmatically. and run several cron job to check transaction / subscription status periodically.
 
-3. 退款
+- **prepare a subscription**
 
-```typescript
-alipayStore.refoundPurchase(transaction);
-```
+  ```ts
+  let {subscription, response} = await paying.prepareSubscription('alipay', {
+    product: {id: 'monthly' as ProductId, group: 'membership'},
+    userId: 'xiaoming' as UserId,
+  });
 
-## 苹果订阅
+  subscription.status === 'pending'; // true
 
-1. 通过 receipt 创建或更新订阅
+  // return response to client to send an purchase
+  ```
 
-```typescript
-let subscription = appleStore.validateAndSaveReceipt(receipt);
-```
+- There are two ways to **confirm a subscription status**.
 
-2. 当订阅信息更新时的回调处理
+  1. Check subscription and payment status
 
-```typescript
-let subscription = appleStore.handleNotification(data);
-```
+     ```ts
+     await paying.checkTransaction('alipay', subscription.latestTransaction.id);
 
-## 苹果付款
+     await subscription.refresh();
 
-```typescript
-let transaction = appleStore.validateAndSaveReceipt(receipt);
-```
+     // if user paid:
+     subscription.status === 'active'; // true
 
-## 定时任务
+     // or maybe user canceled:
+     subscription.status === 'canceled'; // true
 
-定期检查过期订阅，以及订阅扣费
+     // or maybe still pending:
+     ```
 
-```typescript
-store.checkSubscriptions(10);
-```
+  2. Handle callback to update payment status
 
-定期检查未完成的过期付款
+     ```ts
+     router('/alipay/callback', req => {
+       await paying.handleCallback('alipay', req.data);
 
-```typescript
-store.checkTransactions(20);
-```
+       await subscription.refresh();
 
-## 查询
+       // if user paid:
+       subscription.status === 'active'; // true
 
-```typescript
-let subscription = store.getSubscription(subscriptionId);
-// subscription.transactions: Transaction[]
-// subscription.expiresAt: "2020-01-01T00:00:00.000Z"
-// subscription.status: "active" || "canceled" || 'pending'
+       // or maybe user canceled:
+       subscription.status === 'canceled'; // true
+     });
+     ```
 
-let transaction = store.getTransaction(transactionId);
-// transaction.status: "pending" || "completed" || "failed"
+- send a **subscription renewal** request to the paying service provider.
 
-let subscriptions = store.getSubscriptionByUserId(userId);
+  ```ts
+  // if subscription needs to be renewal, and the subscription is still active:
+  let transactionToBeRenewed = await paying.getSubscription(lastSubscriptionId);
 
-let transactions = store.getTransactionsByUserId(userId);
-```
+  transactionToBeRenewed.expiresAt; // 2022-5-1 00:00:00 (expiresAt is a timestamp, here formatted to a date for ease of reading)
+
+  await paying.checkSubscriptionRenewal('self-hosted', error => {
+    // handle error here
+  });
+
+  await subscription.refresh();
+
+  subscription.expiresAt; // 2022-6-1 00:00:00
+  ```
+
+- **cancel a subscription**
+
+  > subscription can be cancelled by two ways, either by our program or by the user cancelled at paying service provider.
+
+  1. Cancel subscription programmatically
+
+     ```ts
+     await paying.cancelSubscription('alipay', subscription); // true;
+     ```
+
+  2. subscription canceled by paying service provider
+
+     ```ts
+     await paying.handleCallback('alipay', data);
+     ```
+
+# Service implementation
+
+## Apple
+
+## Alipay
+
+# API
+
+WIP
+
+# License
+
+MIT License.

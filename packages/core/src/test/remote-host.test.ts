@@ -172,7 +172,7 @@ test('should sync receipt', async () => {
       renewalBefore: ms('5d'),
       repository: {
         mongoClient,
-        dbName,
+        database: dbName,
       },
     },
   );
