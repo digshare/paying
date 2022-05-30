@@ -23,6 +23,9 @@
     },
     {
       "path": "packages/apple/src/test"
+    },
+    {
+      "path": "packages/demo/src/program"
     }
   ],
   "files": []

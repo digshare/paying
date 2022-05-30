@@ -1,0 +1,13 @@
+{
+  "name": "@paying/demo",
+  "version": "0.0.0",
+  "license": "MIT",
+  "author": "enverse",
+  "dependencies": {
+    "@paying/alipay": "*",
+    "@paying/apple": "*",
+    "@paying/core": "*",
+    "@paying/wechat": "*",
+    "tslib": "^2.4.0"
+  }
+}
