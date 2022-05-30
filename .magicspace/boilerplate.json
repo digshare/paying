@@ -74,6 +74,32 @@
             "references": ["library"]
           }
         ]
+      },
+      {
+        "name": "@paying/demo",
+        "tsProjects": [
+          {
+            "name": "program",
+            "references": [
+              {
+                "package": "@paying/core",
+                "project": "library"
+              },
+              {
+                "package": "@paying/alipay",
+                "project": "library"
+              },
+              {
+                "package": "@paying/wechat",
+                "project": "library"
+              },
+              {
+                "package": "@paying/apple",
+                "project": "library"
+              }
+            ]
+          }
+        ]
       }
     ]
   }
