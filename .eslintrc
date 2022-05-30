@@ -12,7 +12,9 @@
     "/packages/wechat/.bld-cache/",
     "/packages/apple/src/",
     "/packages/apple/bld/",
-    "/packages/apple/.bld-cache/"
+    "/packages/apple/.bld-cache/",
+    "/packages/demo/src/",
+    "/packages/demo/bld/"
   ],
   "extends": ["eslint:recommended"],
   "env": {

@@ -13,15 +13,16 @@
     "packages/core",
     "packages/alipay",
     "packages/wechat",
-    "packages/apple"
+    "packages/apple",
+    "packages/demo"
   ],
   "devDependencies": {
-    "@mufan/code": "^0.2.13",
-    "@mufan/eslint-plugin": "^0.1.66",
-    "eslint": "^8.15.0",
+    "@mufan/code": "^0.2.14",
+    "@mufan/eslint-plugin": "^0.1.68",
+    "eslint": "^8.16.0",
     "prettier": "^2.6.2",
     "rimraf": "^3.0.2",
     "run-in-every": "^0.2.0",
-    "typescript": "^4.6.4"
+    "typescript": "^4.7.2"
   }
 }

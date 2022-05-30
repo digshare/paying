@@ -20,7 +20,8 @@
     "packages/wechat/src/library",
     "packages/wechat/src/test",
     "packages/apple/src/library",
-    "packages/apple/src/test"
+    "packages/apple/src/test",
+    "packages/demo/src/program"
   ],
   "eslint.validate": [
     "javascript",
