@@ -2,6 +2,8 @@
 
 A Node.js module for subscription and purchase processing.
 
+![example workflow](https://github.com/digshare/paying/actions/workflows/.github/workflows/ci.yml/badge.svg)
+
 # Installation
 
 ```bash
