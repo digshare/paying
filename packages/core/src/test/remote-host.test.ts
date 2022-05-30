@@ -1,5 +1,6 @@
 import {assertScriptsCompleted, call, createBlackObject} from 'black-object';
 import {MongoClient} from 'mongodb';
+import {MongoMemoryServer} from 'mongodb-memory-server';
 import ms from 'ms';
 import {v4 as uuid} from 'uuid';
 
@@ -43,22 +44,34 @@ let PURCHASE_PRODUCTS: IProduct[] = [
   },
 ];
 
-let mongoClient = new MongoClient('mongodb://localhost:27017', {
-  ignoreUndefined: true,
-});
+// let mongoClient = new MongoClient('mongodb://localhost:27017', {
+//   ignoreUndefined: true,
+// });
 const dbName = 'paying-test-2';
 
 beforeEach(async () => {
   await mongoClient.db(dbName).dropDatabase();
 });
 
+let mongoClient: MongoClient;
+let mongoServer: MongoMemoryServer;
+
 beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  mongoClient = await MongoClient.connect(mongoServer.getUri(), {
+    ignoreUndefined: true,
+  });
+
   await mongoClient.connect();
   await mongoClient.db(dbName).dropDatabase();
 });
 
 afterAll(async () => {
   await mongoClient.close();
+
+  if (mongoServer) {
+    await mongoServer.stop();
+  }
 });
 
 function generateTransactionId(): TransactionId {

@@ -1,5 +1,7 @@
 import {assertScriptsCompleted, call, createBlackObject, x} from 'black-object';
 import _ from 'lodash';
+import {MongoClient} from 'mongodb';
+import {MongoMemoryServer} from 'mongodb-memory-server';
 import ms from 'ms';
 
 import type {IPayingService, IProduct} from '../library';
@@ -9,7 +11,6 @@ import {
   dbName,
   generateOriginalTransactionId,
   generateTransactionId,
-  mongoClient,
 } from './@common';
 
 let GROUP_PRODUCTS: Record<
@@ -40,6 +41,31 @@ let PURCHASE_PRODUCTS: Record<'product-a' | 'product-b', IProduct> = {
     type: 'purchase',
   },
 };
+
+let mongoClient: MongoClient;
+let mongoServer: MongoMemoryServer;
+
+beforeEach(async () => {
+  await mongoClient.db(dbName).dropDatabase();
+});
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  mongoClient = await MongoClient.connect(mongoServer.getUri(), {
+    ignoreUndefined: true,
+  });
+
+  await mongoClient.connect();
+  await mongoClient.db(dbName).dropDatabase();
+});
+
+afterAll(async () => {
+  await mongoClient.close();
+
+  if (mongoServer) {
+    await mongoServer.stop();
+  }
+});
 
 test('should subscribed', async () => {
   let duration = ms('30d');
@@ -766,16 +792,4 @@ test('should purchase', async () => {
   expect(user.purchaseTransactions.length).toEqual(2);
 
   assertScriptsCompleted(selfHostedService);
-});
-
-beforeEach(async () => {
-  await mongoClient.db(dbName).dropDatabase();
-});
-
-beforeAll(async () => {
-  await mongoClient.connect();
-});
-
-afterAll(async () => {
-  await mongoClient.close();
 });
