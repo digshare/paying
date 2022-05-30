@@ -345,7 +345,7 @@ test('should renewal subscription', async () => {
   let purchasedAt = subscriptionCreatedAt;
   let expiresAt = (now + ms('2d')) as Timestamp;
   let product = GROUP_PRODUCTS.monthly;
-  let adventDate = (now + RENEW_BEFORE) as Timestamp;
+  // let adventDate = (now + RENEW_BEFORE) as Timestamp;
 
   let originalTransaction: OriginalTransactionDocument = {
     _id: originalTransactionId,
