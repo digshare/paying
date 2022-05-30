@@ -79,10 +79,31 @@ export class Paying<
     this.ready = this.repository.ready;
   }
 
+  /**
+   *
+   * query user by id from repository,
+   * including all subscriptions and transactions
+   *
+   * @param id user ID
+   * @returns User Object
+   */
   async user(id: UserId): Promise<User> {
     return this.repository.getUserById(id);
   }
 
+  /**
+   *
+   * prepare a new subscription.
+   * which will create a pending subscription,
+   * and wait to be confirmed by callback or scheduled checks
+   *
+   * @param serviceName Specify a service to process. refers to
+   * keys(this.services)
+   * @param options {product, userId}
+   * @returns {Promise<{subscription: Subscription, response: unknown}>}
+   * returns a promise that resolves to the subscription created just now and
+   * response usually send to client to purchase.
+   */
   async prepareSubscription(
     serviceName: TServiceKey,
     options: PrepareSubscriptionOptions<InferProduct<TPayingService>>,
@@ -106,6 +127,14 @@ export class Paying<
     return this.createSubscription(serviceName, options, activeSubscription);
   }
 
+  /**
+   *
+   * Query transaction by id
+   *
+   * @param serviceName
+   * @param id transaction id
+   * @returns could be SubscriptionTransaction Or PurchaseTransaction
+   */
   async getTransaction(
     serviceName: TServiceKey,
     id: TransactionId,
@@ -115,6 +144,13 @@ export class Paying<
     return doc && this.repository.buildTransactionFromDoc(doc);
   }
 
+  /**
+   * Query subscription by id. it also contains all transactions related to
+   * subscription
+   * @param serviceName
+   * @param id
+   * @returns
+   */
   async getSubscription(
     serviceName: TServiceKey,
     id: OriginalTransactionId,
@@ -122,6 +158,15 @@ export class Paying<
     return this.repository.getSubscriptionById(serviceName, id);
   }
 
+  /**
+   *
+   * Similar to prepareSubscription, but it will create a new pending purchase
+   *
+   * @param serviceName
+   * @param product
+   * @param userId
+   * @returns
+   */
   async preparePurchase(
     serviceName: TServiceKey,
     product: InferProduct<TPayingService>,
@@ -166,6 +211,19 @@ export class Paying<
     return response;
   }
 
+  /**
+   *
+   * Handle callback from payment service. which may contains actions like:
+   * - payment-confirmed
+   * - subscribed
+   * - recharge-failed
+   * - ...
+   * check {Actions} for more details
+   *
+   * @param serviceName
+   * @param data
+   * @returns void
+   */
   async handleCallback(serviceName: TServiceKey, data: unknown): Promise<void> {
     let service = this.requireService(serviceName);
 
@@ -178,6 +236,15 @@ export class Paying<
     await this.applyAction(serviceName, action);
   }
 
+  /**
+   *
+   * Handle receipt from client. send receipt to validation server to validate
+   * and retrieve subscription/purchase status.
+   *
+   * @param serviceName
+   * @param userId
+   * @param receipt
+   */
   async handleReceipt(
     serviceName: TServiceKey,
     userId: UserId,
@@ -200,6 +267,14 @@ export class Paying<
     }
   }
 
+  /**
+   * Try to cancel a subscription. it will send an cancellation request to
+   * payment server, and the payment well be cancelled only if payment server
+   * returns success
+   * @param serviceName
+   * @param subscriptionOrId
+   * @returns
+   */
   async cancelSubscription(
     serviceName: TServiceKey,
     subscriptionOrId: OriginalTransactionId | Subscription,
@@ -236,6 +311,14 @@ export class Paying<
     return subscription.status === 'canceled';
   }
 
+  /**
+   *
+   * call this method periodically. to confirm pending transaction or cancel
+   * expired transaction.
+   *
+   * @param serviceName
+   * @param onError
+   */
   async checkTransactions(
     serviceName: TServiceKey,
     onError?: (error: unknown) => void,
@@ -263,13 +346,14 @@ export class Paying<
     }
   }
 
-  // async checkSubscriptions(
-  //   serviceName: TServiceKey,
-  //   breakPolicy: 'onError' | 'never',
-  // ): Promise<void> {
-  //   await this.checkSubscriptionRenewal(serviceName);
-  // }
-
+  /**
+   *
+   * check all pending subscriptions.
+   * complete or cancel them if status has been settled.
+   *
+   * @param serviceName
+   * @param onError
+   */
   async checkUncompletedSubscription(
     serviceName: TServiceKey,
     onError?: (error: unknown) => void,
@@ -312,6 +396,15 @@ export class Paying<
     }
   }
 
+  /**
+   *
+   * according to config.renewalBefore.
+   * send a renew request for subscriptions
+   * which expires date less than (now + config.renewalBefore)
+   *
+   * @param serviceName
+   * @param onError
+   */
   async checkSubscriptionRenewal(
     serviceName: TServiceKey,
     onError?: (error: unknown) => void,

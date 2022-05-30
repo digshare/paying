@@ -36,11 +36,13 @@ const GROUP_PRODUCTS: Record<
     group: 'membership',
     id: 'monthly' as ProductId,
     duration: ms('30d'),
+    type: 'subscription',
   },
   yearly: {
     group: 'membership',
     id: 'yearly' as ProductId,
     duration: ms('1y'),
+    type: 'subscription',
   },
 };
 
@@ -152,6 +154,7 @@ test('should prepare subscription', async () => {
             product: x.object({
               id: ProductId,
               group: x.union(x.string, x.undefined),
+              type: x.union(x.literal('subscription'), x.literal('purchase')),
             }),
             paymentExpiresAt: Timestamp,
             userId: UserId,
@@ -398,7 +401,7 @@ test('should renewal subscription', async () => {
             call(
               [
                 {
-                  expiresAt: {$lt: adventDate},
+                  expiresAt: {$lt: x.number},
                   canceledAt: {$exists: false},
                   subscribedAt: {$exists: true},
                   service: SERVICE_NAME,

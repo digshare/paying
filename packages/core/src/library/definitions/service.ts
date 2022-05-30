@@ -171,6 +171,7 @@ export abstract class IPayingService<TProduct extends IProduct = IProduct> {
 export interface IProduct {
   id: ProductId;
   group?: string;
+  type: 'subscription' | 'purchase';
 }
 
 export interface PayingServiceSubscriptionPrepareOptions<

@@ -22,20 +22,24 @@ let GROUP_PRODUCTS: Record<
     group: 'membership-2',
     id: 'monthly-2' as ProductId,
     duration: ms('1m'),
+    type: 'subscription',
   },
   yearly: {
     group: 'membership-2',
     id: 'yearly-2' as ProductId,
     duration: ms('1y'),
+    type: 'subscription',
   },
 };
 
 let PURCHASE_PRODUCTS: IProduct[] = [
   {
     id: 'purchase-1' as ProductId,
+    type: 'purchase',
   },
   {
     id: 'purchase-2' as ProductId,
+    type: 'purchase',
   },
 ];
 

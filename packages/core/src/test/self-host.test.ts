@@ -20,20 +20,24 @@ let GROUP_PRODUCTS: Record<
     group: 'membership',
     id: 'monthly' as ProductId,
     duration: ms('1m'),
+    type: 'subscription',
   },
   yearly: {
     group: 'membership',
     id: 'yearly' as ProductId,
     duration: ms('1y'),
+    type: 'subscription',
   },
 };
 
 let PURCHASE_PRODUCTS: Record<'product-a' | 'product-b', IProduct> = {
   'product-a': {
     id: 'product-a' as ProductId,
+    type: 'purchase',
   },
   'product-b': {
     id: 'product-b' as ProductId,
+    type: 'purchase',
   },
 };
 
@@ -52,6 +56,7 @@ test('should subscribed', async () => {
             product: x.object({
               id: ProductId,
               group: x.union(x.string, x.undefined),
+              type: x.union(x.literal('subscription'), x.literal('purchase')),
             }),
             paymentExpiresAt: Timestamp,
             userId: UserId,
@@ -115,7 +120,7 @@ test('should subscribed', async () => {
   await paying.ready;
 
   let {subscription} = await paying.prepareSubscription('self-hosted', {
-    product: {id: 'monthly' as ProductId},
+    product: GROUP_PRODUCTS.monthly,
     userId: 'xiaoming' as UserId,
   });
 
@@ -158,6 +163,7 @@ test('expired transaction should be canceled', async () => {
             product: x.object({
               id: ProductId,
               group: x.union(x.string, x.undefined),
+              type: x.union(x.literal('subscription'), x.literal('purchase')),
             }),
             paymentExpiresAt: Timestamp,
             userId: UserId,
@@ -198,7 +204,7 @@ test('expired transaction should be canceled', async () => {
   await paying.ready;
 
   await paying.prepareSubscription('self-hosted', {
-    product: {id: 'monthly' as ProductId},
+    product: GROUP_PRODUCTS.monthly,
     userId: 'xiaoming' as UserId,
   });
 
@@ -220,7 +226,7 @@ test('should renew', async () => {
   let purchaseExpiresAfter = ms('10m');
   let transactionId = generateTransactionId();
   let originalTransactionId = generateOriginalTransactionId();
-  let productId = 'monthly' as ProductId;
+  let product = GROUP_PRODUCTS.monthly;
 
   let selfHostedService = createBlackObject<IPayingService>([
     [
@@ -232,6 +238,7 @@ test('should renew', async () => {
             product: x.object({
               id: ProductId,
               group: x.union(x.string, x.undefined),
+              type: x.union(x.literal('subscription'), x.literal('purchase')),
             }),
             paymentExpiresAt: Timestamp,
             userId: UserId,
@@ -269,32 +276,28 @@ test('should renew', async () => {
     [
       'rechargeSubscription',
       call(
-        [x.object({}), x.number],
+        [x.object({}), Timestamp],
         Promise.resolve({
           type: 'subscription-renewal' as 'subscription-renewal',
           transactionId: generateTransactionId(),
           purchasedAt: (now + ms('2s')) as Timestamp,
           duration,
           originalTransactionId,
-          product: {
-            id: productId,
-          },
+          product,
         }),
       ),
     ],
     [
       'rechargeSubscription',
       call(
-        [x.object({}), x.number],
+        [x.object({}), Timestamp],
         Promise.resolve({
           type: 'subscription-renewal' as 'subscription-renewal',
           transactionId: generateTransactionId(),
           purchasedAt: (now + ms('2s')) as Timestamp,
           duration,
           originalTransactionId,
-          product: {
-            id: productId,
-          },
+          product,
         }),
       ),
     ],
@@ -339,7 +342,7 @@ test('should renew', async () => {
   await paying.ready;
 
   let {subscription} = await paying.prepareSubscription('self-hosted', {
-    product: {id: productId},
+    product,
     userId: 'xiaoming' as UserId,
   });
 
@@ -426,6 +429,7 @@ test('should change subscription', async () => {
             product: x.object({
               id: ProductId,
               group: x.union(x.string, x.undefined),
+              type: x.union(x.literal('subscription'), x.literal('purchase')),
             }),
             paymentExpiresAt: Timestamp,
             userId: UserId,
@@ -560,6 +564,7 @@ test('should subscription be canceled', async () => {
             product: x.object({
               id: ProductId,
               group: x.union(x.string, x.undefined),
+              type: x.union(x.literal('subscription'), x.literal('purchase')),
             }),
             paymentExpiresAt: Timestamp,
             userId: UserId,
@@ -623,7 +628,7 @@ test('should subscription be canceled', async () => {
   await paying.ready;
 
   let {subscription} = await paying.prepareSubscription('self-hosted', {
-    product: {id: 'monthly' as ProductId},
+    product: GROUP_PRODUCTS.monthly,
     userId: 'xiaoming' as UserId,
   });
 
@@ -659,6 +664,7 @@ test('should purchase', async () => {
             product: x.object({
               id: ProductId,
               group: x.union(x.string, x.undefined),
+              type: x.union(x.literal('subscription'), x.literal('purchase')),
             }),
             paymentExpiresAt: Timestamp,
             userId: UserId,

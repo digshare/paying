@@ -17,7 +17,7 @@ import type {
   TransactionStatusCheckingResult,
 } from '@paying/core';
 import {IPayingService} from '@paying/core';
-import type {AlipaySdkCommonResult, AlipaySdkConfig} from 'alipay-sdk';
+import type {AlipaySdkCommonResult} from 'alipay-sdk';
 import {addDays, format, startOfMonth} from 'date-fns';
 import ms from 'ms';
 import {v4 as uuid} from 'uuid';
@@ -25,26 +25,45 @@ import {v4 as uuid} from 'uuid';
 import {Alipay} from './alipay';
 
 interface AlipayConfig {
-  appId: string;
   signedCallbackURL: string;
   paidCallbackURL: string;
-  sdk: AlipaySdkConfig;
+
+  gateway?: string;
+  appId: string;
+  privateKey: string;
+
+  appCert: string;
+  alipayPublicCert: string;
+  alipayRootCert: string;
 }
 
-interface AlipayProduct extends IProduct {
+interface AlipayPurchaseProduct extends IProduct {
   subject: string;
   amount: number;
-  maxAmount: number;
+}
+
+interface AlipaySubscriptionProduct extends AlipayPurchaseProduct {
+  maxAmount?: number;
   unit: 'MONTH' | 'DAY';
   duration: number;
 }
+
+type AlipayProduct = AlipayPurchaseProduct | AlipaySubscriptionProduct;
 
 export class AlipayService extends IPayingService<AlipayProduct> {
   private alipay: Alipay;
 
   constructor(public config: AlipayConfig, products: AlipayProduct[]) {
     super(products);
-    this.alipay = new Alipay(config.sdk);
+    this.alipay = new Alipay({
+      gateway: config.gateway,
+      appId: config.appId,
+      privateKey: config.privateKey,
+
+      appCertContent: config.appCert,
+      alipayPublicCertContent: config.alipayPublicCert,
+      alipayRootCertContent: config.alipayRootCert,
+    });
   }
 
   parseReceipt(): Promise<ApplyingReceipt<never>> {
@@ -52,6 +71,16 @@ export class AlipayService extends IPayingService<AlipayProduct> {
   }
 
   getDuration(product: AlipayProduct): number {
+    if (!('duration' in product)) {
+      throw new Error(
+        `require a subscription product, but got ${JSON.stringify(
+          product,
+          undefined,
+          2,
+        )}`,
+      );
+    }
+
     if (product.unit === 'DAY') {
       return product.duration * ms('1d');
     } else if (product.unit === 'MONTH') {
@@ -103,12 +132,19 @@ export class AlipayService extends IPayingService<AlipayProduct> {
   ): Promise<PrepareSubscriptionReturn> {
     let msDuration = this.getDuration(creation.product);
 
-    let {
-      paymentExpiresAt,
-      userId,
-      startsAt,
-      product: {amount, subject, unit, duration, maxAmount},
-    } = creation;
+    let {paymentExpiresAt, userId, startsAt, product} = creation;
+
+    if (!('duration' in product)) {
+      throw new Error(
+        `require a subscription product, but got ${JSON.stringify(
+          product,
+          undefined,
+          2,
+        )}`,
+      );
+    }
+
+    let {amount, subject, unit, duration, maxAmount} = product;
 
     let transactionId = this.generateTransactionId();
     let originalTransactionId = this.generateOriginalTransactionId();

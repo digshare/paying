@@ -7,7 +7,7 @@
     "build": "rimraf packages/*/{.bld-cache,bld} && tsc --build",
     "lint": "run-in-every eslint-project --parallel --echo -- eslint --config {configFileName} .",
     "lint-prettier": "prettier --check .",
-    "test": "yarn lint-prettier && yarn build && yarn lint && jest",
+    "test": "yarn lint-prettier && yarn build && yarn lint && yarn jest",
     "jest": "yarn core jest",
     "core": "yarn workspace @paying/core"
   },
