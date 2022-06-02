@@ -9,6 +9,7 @@ import type {
   OriginalTransactionId,
   PayingServiceSubscriptionPrepareOptions,
   PaymentConfirmedAction,
+  ProductId,
   PurchaseCreation,
   PurchaseReceipt,
   PurchaseTransactionDocument,
@@ -44,8 +45,8 @@ type ActionToHandler<TServiceKey extends string> = {
   ) => Promise<void>;
 };
 
-interface PrepareSubscriptionOptions<TProduct extends IProduct> {
-  product: TProduct;
+interface PrepareSubscriptionOptions {
+  productId: ProductId;
   userId: UserId;
 }
 
@@ -106,9 +107,11 @@ export class Paying<
    */
   async prepareSubscription(
     serviceName: TServiceKey,
-    options: PrepareSubscriptionOptions<InferProduct<TPayingService>>,
+    options: PrepareSubscriptionOptions,
   ): Promise<{subscription: Subscription; response: unknown}> {
-    let {product, userId} = options;
+    let {productId, userId} = options;
+
+    let product = this.requireService(serviceName).requireProduct(productId);
 
     let activeSubscription: Subscription | undefined;
 
@@ -124,7 +127,12 @@ export class Paying<
       await this.cancelSubscription(serviceName, activeSubscription);
     }
 
-    return this.createSubscription(serviceName, options, activeSubscription);
+    return this.createSubscription(
+      serviceName,
+      product,
+      userId,
+      activeSubscription,
+    );
   }
 
   /**
@@ -169,7 +177,7 @@ export class Paying<
    */
   async preparePurchase(
     serviceName: TServiceKey,
-    product: InferProduct<TPayingService>,
+    productId: ProductId,
     userId: UserId,
   ): Promise<any> {
     let service = this.requireService(serviceName);
@@ -180,12 +188,12 @@ export class Paying<
       this.config.purchaseExpiresAfter) as Timestamp;
 
     let purchaseCreation: PurchaseCreation = {
-      product,
+      productId,
       paymentExpiresAt,
       userId,
     };
 
-    let {response, transactionId} = await service.preparePurchaseData(
+    let {response, transactionId, product} = await service.preparePurchaseData(
       purchaseCreation,
     );
 
@@ -911,7 +919,8 @@ export class Paying<
 
   private async createSubscription(
     serviceName: TServiceKey,
-    {product, userId}: PrepareSubscriptionOptions<InferProduct<TPayingService>>,
+    product: IProduct,
+    userId: UserId,
     lastSubscription?: Subscription,
   ): Promise<{
     subscription: Subscription;

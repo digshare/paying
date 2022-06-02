@@ -80,7 +80,7 @@ export class AppleService extends IPayingService<AppleProduct> {
   }
 
   preparePurchaseData(
-    _options: PurchaseCreation<AppleProduct>,
+    _options: PurchaseCreation,
   ): Promise<PreparePurchaseReturn> {
     throw new Error('Method not implemented.');
   }

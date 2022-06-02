@@ -274,10 +274,10 @@ and wait to be confirmed by callback or scheduled checks
 
 #### Parameters
 
-| Name          | Type                                                             | Description                                                 |
-| :------------ | :--------------------------------------------------------------- | :---------------------------------------------------------- |
-| `serviceName` | `TServiceKey`                                                    | Specify a service to process. refers to keys(this.services) |
-| `options`     | `PrepareSubscriptionOptions`<`InferProduct`<`TPayingService`\>\> |                                                             |
+| Name          | Type                         | Description                                                 |
+| :------------ | :--------------------------- | :---------------------------------------------------------- |
+| `serviceName` | `TServiceKey`                | Specify a service to process. refers to keys(this.services) |
+| `options`     | `PrepareSubscriptionOptions` |                                                             |
 
 #### Returns
 
@@ -295,7 +295,7 @@ and wait to be confirmed by callback or scheduled checks
 
 ### preparePurchase
 
-▸ **preparePurchase**(`serviceName`, `product`, `userId`): `Promise`<`any`\>
+▸ **preparePurchase**(`serviceName`, `productId`, `userId`): `Promise`<`any`\>
 
 Similar to prepareSubscription, but it will create a new pending purchase
 
@@ -304,7 +304,7 @@ Similar to prepareSubscription, but it will create a new pending purchase
 | Name          | Type                                                                                    |
 | :------------ | :-------------------------------------------------------------------------------------- |
 | `serviceName` | `TServiceKey`                                                                           |
-| `product`     | `InferProduct`<`TPayingService`\>                                                       |
+| `product`     | `ProductId`                                                                             |
 | `userId`      | `__RefinedNominalType`<`string`, `Record`<typeof `__nominal`, { `user-id`: `true` }\>\> |
 
 #### Returns

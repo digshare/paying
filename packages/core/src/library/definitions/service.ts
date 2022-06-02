@@ -102,6 +102,7 @@ export interface PrepareSubscriptionReturn {
 export interface PreparePurchaseReturn {
   response: unknown;
   transactionId: TransactionId;
+  product: IProduct;
 }
 
 export type TransactionStatusCheckingResult =
@@ -127,7 +128,7 @@ export abstract class IPayingService<TProduct extends IProduct = IProduct> {
     options: PayingServiceSubscriptionPrepareOptions<TProduct>,
   ): Promise<PrepareSubscriptionReturn>;
   abstract preparePurchaseData(
-    options: PurchaseCreation<TProduct>,
+    options: PurchaseCreation,
   ): Promise<PreparePurchaseReturn>;
   abstract parseReceipt(receipt: unknown): Promise<ApplyingReceipt<TProduct>>;
   abstract parseCallback(callback: unknown): Promise<Action | undefined>;
@@ -183,8 +184,8 @@ export interface PayingServiceSubscriptionPrepareOptions<
   userId: UserId;
 }
 
-export interface PurchaseCreation<TProduct extends IProduct = IProduct> {
-  product: TProduct;
+export interface PurchaseCreation {
+  productId: ProductId;
   paymentExpiresAt: Timestamp;
   userId: UserId;
 }

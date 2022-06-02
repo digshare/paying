@@ -73,6 +73,7 @@ test('should subscribed', async () => {
   let originalTransactionId = generateOriginalTransactionId();
 
   let selfHostedService = createBlackObject<IPayingService>([
+    ['requireProduct', call([ProductId], GROUP_PRODUCTS.monthly)],
     [
       'prepareSubscriptionData',
       call(
@@ -146,7 +147,7 @@ test('should subscribed', async () => {
   await paying.ready;
 
   let {subscription} = await paying.prepareSubscription('self-hosted', {
-    product: GROUP_PRODUCTS.monthly,
+    productId: GROUP_PRODUCTS.monthly.id,
     userId: 'xiaoming' as UserId,
   });
 
@@ -180,6 +181,7 @@ test('expired transaction should be canceled', async () => {
   let originalTransactionId = generateOriginalTransactionId();
 
   let selfHostedService = createBlackObject<IPayingService>([
+    ['requireProduct', call([ProductId], GROUP_PRODUCTS.monthly)],
     [
       'prepareSubscriptionData',
       call(
@@ -230,7 +232,7 @@ test('expired transaction should be canceled', async () => {
   await paying.ready;
 
   await paying.prepareSubscription('self-hosted', {
-    product: GROUP_PRODUCTS.monthly,
+    productId: GROUP_PRODUCTS.monthly.id,
     userId: 'xiaoming' as UserId,
   });
 
@@ -368,7 +370,7 @@ test('should renew', async () => {
   await paying.ready;
 
   let {subscription} = await paying.prepareSubscription('self-hosted', {
-    product,
+    productId: product.id,
     userId: 'xiaoming' as UserId,
   });
 
@@ -531,7 +533,7 @@ test('should change subscription', async () => {
   let {subscription: monthlySubscription} = await paying.prepareSubscription(
     'self-hosted',
     {
-      product: monthlyProduct,
+      productId: monthlyProduct.id,
       userId,
     },
   );
@@ -544,7 +546,7 @@ test('should change subscription', async () => {
 
   let {subscription: yearlySubscription} = await paying.prepareSubscription(
     'self-hosted',
-    {product: yearlyProduct, userId},
+    {productId: yearlyProduct.id, userId},
   );
 
   await monthlySubscription.refresh();
@@ -654,7 +656,7 @@ test('should subscription be canceled', async () => {
   await paying.ready;
 
   let {subscription} = await paying.prepareSubscription('self-hosted', {
-    product: GROUP_PRODUCTS.monthly,
+    productId: GROUP_PRODUCTS.monthly.id,
     userId: 'xiaoming' as UserId,
   });
 
@@ -687,11 +689,7 @@ test('should purchase', async () => {
       call(
         [
           x.object({
-            product: x.object({
-              id: ProductId,
-              group: x.union(x.string, x.undefined),
-              type: x.union(x.literal('subscription'), x.literal('purchase')),
-            }),
+            productId: ProductId,
             paymentExpiresAt: Timestamp,
             userId: UserId,
           }),
@@ -699,6 +697,7 @@ test('should purchase', async () => {
         Promise.resolve({
           response: '',
           transactionId: transactionId1,
+          product: PURCHASE_PRODUCTS['product-a'],
         }),
       ),
     ],
@@ -717,10 +716,7 @@ test('should purchase', async () => {
       call(
         [
           x.object({
-            product: x.object({
-              id: ProductId,
-              group: x.union(x.string, x.undefined),
-            }),
+            productId: ProductId,
             paymentExpiresAt: Timestamp,
             userId: UserId,
           }),
@@ -728,6 +724,7 @@ test('should purchase', async () => {
         Promise.resolve({
           response: '',
           transactionId: transactionId2,
+          product: PURCHASE_PRODUCTS['product-a'],
         }),
       ),
     ],
@@ -759,7 +756,7 @@ test('should purchase', async () => {
 
   await paying.preparePurchase(
     'self-hosted',
-    PURCHASE_PRODUCTS['product-a'],
+    PURCHASE_PRODUCTS['product-a'].id,
     userId,
   );
 
@@ -775,7 +772,7 @@ test('should purchase', async () => {
 
   await paying.preparePurchase(
     'self-hosted',
-    PURCHASE_PRODUCTS['product-a'],
+    PURCHASE_PRODUCTS['product-a'].id,
     userId,
   );
 

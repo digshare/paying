@@ -10,3 +10,6 @@ bld/
 
 # Jest
 coverage/
+
+# Config
+.config.js

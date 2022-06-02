@@ -145,6 +145,7 @@ test('should prepare subscription', async () => {
   ]);
 
   let service = createBlackObject<IPayingService>([
+    ['requireProduct', call([ProductId], GROUP_PRODUCTS.monthly)],
     [
       'prepareSubscriptionData',
       call(
@@ -182,7 +183,7 @@ test('should prepare subscription', async () => {
   );
 
   let {subscription} = await paying.prepareSubscription(SERVICE_NAME, {
-    product: GROUP_PRODUCTS.monthly,
+    productId: GROUP_PRODUCTS.monthly.id,
     userId: XIAO_MING,
   });
 

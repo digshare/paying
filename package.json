@@ -5,6 +5,7 @@
   "author": "Chengdu Enverse Co., Ltd.",
   "scripts": {
     "build": "rimraf packages/*/{.bld-cache,bld} && tsc --build",
+    "watch": "yarn build --watch",
     "lint": "run-in-every eslint-project --parallel --echo -- eslint --config {configFileName} .",
     "lint-prettier": "prettier --check .",
     "test": "yarn lint-prettier && yarn build && yarn lint && yarn jest",
@@ -25,12 +26,12 @@
     "black-object": "^0.0.1-3",
     "jest": "^28.1.0",
     "ts-jest": "^28.0.1",
-    "@mufan/code": "^0.2.14",
+    "@mufan/code": "0.2.13",
     "@mufan/eslint-plugin": "^0.1.68",
     "eslint": "^8.16.0",
     "prettier": "^2.6.2",
     "rimraf": "^3.0.2",
     "run-in-every": "^0.2.0",
-    "typescript": "^4.7.2"
+    "typescript": "~4.6.4"
   }
 }

@@ -37,18 +37,18 @@ interface AlipayConfig {
   alipayRootCert: string;
 }
 
-interface AlipayPurchaseProduct extends IProduct {
+export interface AlipayPurchaseProduct extends IProduct {
   subject: string;
   amount: number;
 }
 
-interface AlipaySubscriptionProduct extends AlipayPurchaseProduct {
+export interface AlipaySubscriptionProduct extends AlipayPurchaseProduct {
   maxAmount?: number;
   unit: 'MONTH' | 'DAY';
   duration: number;
 }
 
-type AlipayProduct = AlipayPurchaseProduct | AlipaySubscriptionProduct;
+export type AlipayProduct = AlipayPurchaseProduct | AlipaySubscriptionProduct;
 
 export class AlipayService extends IPayingService<AlipayProduct> {
   private alipay: Alipay;
@@ -109,10 +109,11 @@ export class AlipayService extends IPayingService<AlipayProduct> {
   }
 
   async preparePurchaseData(
-    options: PurchaseCreation<AlipayProduct>,
+    options: PurchaseCreation,
   ): Promise<PreparePurchaseReturn> {
-    let {product} = options;
+    let {productId} = options;
     let transactionId = this.generateTransactionId();
+    let product = this.requireProduct(productId);
 
     let orderInfo = this.alipay.sign('alipay.trade.app.pay', {
       notify_url: this.config.paidCallbackURL,
@@ -124,7 +125,7 @@ export class AlipayService extends IPayingService<AlipayProduct> {
       },
     });
 
-    return {response: orderInfo, transactionId};
+    return {response: orderInfo, transactionId, product};
   }
 
   async prepareSubscriptionData(
